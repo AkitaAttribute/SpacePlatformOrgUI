@@ -50,7 +50,8 @@ local function safe_sprite_button(parent, name, sprite, tooltip)
       name   = name,
       sprite = sprite,
       style  = "frame_action_button",
-      tooltip = tooltip
+      tooltip = tooltip,
+      -- Do NOT set caption for sprite-button
     }
   end)
   if ok and elem then return elem end
@@ -74,6 +75,7 @@ local function build_platform_ui(player)
 
   frame.style.minimal_width  = st.w
   frame.style.minimal_height = st.h
+  if st.x and st.y then frame.location = {x = st.x, y = st.y} end
 
   -- header wrapper uses vertical flow so we can stack rows
   local header = frame.add{ type = "flow", direction = "vertical", name = "sp_header" }
@@ -96,7 +98,7 @@ local function build_platform_ui(player)
   safe_sprite_button(controls, HEADER_W_DEC, "utility/left_arrow",  "Narrower")
   safe_sprite_button(controls, HEADER_W_INC, "utility/right_arrow", "Wider")
   safe_sprite_button(controls, HEADER_H_DEC, "utility/down_arrow",  "Shorter")
-  safe_sprite_button(controls, HEADER_H_INC, "utility/up_arrow",    "Taller")
+  safe_sprite_button(controls, HEADER_H_INC, "utility/up_arrow",    {"", "Taller"})
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
   log("UI: rendering " .. tostring(#entries) .. " platforms")
@@ -134,9 +136,19 @@ local function build_platform_ui(player)
 end
 
 local function rebuild_ui(player)
-  local existing = player.gui.screen[UI_NAME]
-  if existing and existing.valid then existing.destroy() end
+  local frame = player.gui.screen[UI_NAME]
+  local keep_loc = frame and frame.valid and frame.location
+  local old_scroll = frame and frame.valid and frame["platform_scroll"]
+  local keep_sv = (old_scroll and old_scroll.valid and old_scroll.vertical_scrollbar)
+                    and old_scroll.vertical_scrollbar.value or nil
+  if frame and frame.valid then frame.destroy() end
   build_platform_ui(player)
+  local new_frame = player.gui.screen[UI_NAME]
+  if keep_loc then new_frame.location = keep_loc end
+  local new_scroll = new_frame and new_frame.valid and new_frame["platform_scroll"]
+  if new_scroll and new_scroll.valid and new_scroll.vertical_scrollbar and keep_sv then
+    new_scroll.vertical_scrollbar.value = keep_sv
+  end
 end
 
 local function toggle_platform_ui(player)
@@ -214,7 +226,11 @@ script.on_event(defines.events.on_gui_click, function(event)
   st.h = math.max(240, math.min(900, st.h + (delta_h or 0)))
   local prefs = global.spui
   prefs[player.index] = st
-  rebuild_ui(player)
+  local frame = player.gui.screen[UI_NAME]
+  if frame and frame.valid then
+    frame.style.minimal_width  = st.w
+    frame.style.minimal_height = st.h
+  end
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
@@ -224,10 +240,42 @@ script.on_event(defines.events.on_gui_closed, function(event)
   end
 end)
 
+script.on_event(defines.events.on_gui_location_changed, function(event)
+  local el = event.element
+  if not (el and el.valid and el.name == UI_NAME) then return end
+  local st = ui_state(event.player_index)
+  st.x, st.y = el.location.x, el.location.y
+end)
+
 script.on_init(function()
   global.spui = global.spui or {}
 end)
 
 script.on_configuration_changed(function()
   global.spui = global.spui or {}
+end)
+
+local function rebuild_all_open()
+  for _, p in pairs(game.connected_players) do
+    local frame = p.gui.screen[UI_NAME]
+    if frame and frame.valid then rebuild_ui(p) end
+  end
+end
+
+if defines.events.on_platform_created then
+  script.on_event(defines.events.on_platform_created, rebuild_all_open)
+end
+if defines.events.on_platform_removed then
+  script.on_event(defines.events.on_platform_removed, rebuild_all_open)
+end
+
+script.on_event(defines.events.on_surface_created, function(e)
+  local s = game.surfaces[e.surface_index]
+  if s and s.valid and s.name and s.name:find("^platform%-") then
+    rebuild_all_open()
+  end
+end)
+
+script.on_event(defines.events.on_surface_deleted, function(e)
+  rebuild_all_open()
 end)
