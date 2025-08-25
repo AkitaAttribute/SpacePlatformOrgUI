@@ -1,4 +1,4 @@
--- luacheck: globals remote
+-- luacheck: globals remote log
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
@@ -47,10 +47,14 @@ local function print_remote_interfaces(player)
         count = count + 1
       end
     end
-    player.print("Remote interface '" .. name .. "' functions (" .. count .. "):")
+    local header = "Remote interface '" .. name .. "' functions (" .. count .. "):"
+    player.print(header)
+    log(header)
     for func_name, func in pairs(interface) do
       if type(func) == "function" then
-        player.print("  " .. func_name)
+        local line = "  " .. func_name
+        player.print(line)
+        log(line)
       end
     end
   end
@@ -98,7 +102,6 @@ local function toggle_platform_ui(player)
   if existing and existing.valid then
     existing.destroy()
   else
-    print_remote_interfaces(player)
     print_surface_properties(player)
     build_platform_ui(player)
   end
@@ -107,6 +110,7 @@ end
 script.on_event("space-platform-org-ui-toggle", function(event)
   local player = game.get_player(event.player_index)
   if player then
+    print_remote_interfaces(player)
     toggle_platform_ui(player)
   end
 end)
