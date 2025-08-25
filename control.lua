@@ -3,21 +3,41 @@
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
 
-local function get_space_platforms(force)
-  if not (force and force.valid) then return nil end
+local function collect_platform_surfaces()
   local platforms = {}
-  -- Derive platforms by inspecting available surfaces whose names start with 'platform-'.
   for _, surface in pairs(game.surfaces) do
     local ok_name, surface_name = pcall(function() return surface.name end)
     if ok_name and type(surface_name) == "string" and surface_name:find("^platform%-") then
+      local caption = surface_name
+      local log_message = "surface.name=" .. surface_name
       local ok_platform, platform = pcall(function() return surface.platform end)
-      if ok_platform and platform and platform.valid and platform.force == force then
-        platforms[platform.index] = {platform = platform, surface_name = surface_name}
+      if ok_platform and platform then
+        local ok_pname, p_name = pcall(function() return platform.name end)
+        local ok_pindex, p_index = pcall(function() return platform.index end)
+        local ok_force, p_force = pcall(function() return platform.force end)
+        local force_name
+        if ok_force and p_force then
+          local ok_force_name, f_name = pcall(function() return p_force.name end)
+          if ok_force_name and f_name then force_name = f_name end
+        end
+        if ok_pname and p_name then
+          caption = p_name
+        end
+        log_message = log_message .. ", platform.name=" .. tostring(ok_pname and p_name or "nil") ..
+                      ", platform.index=" .. tostring(ok_pindex and p_index or "nil") ..
+                      ", platform.force=" .. tostring(force_name)
+      else
+        log_message = log_message .. ", platform=nil"
       end
+      log(log_message)
+      table.insert(platforms, {
+        surface_name = surface_name,
+        caption = caption,
+        platform = ok_platform and platform or nil
+      })
     end
   end
-  if next(platforms) then return platforms end
-  return nil
+  return platforms
 end
 
 local function build_platform_ui(player)
@@ -29,8 +49,8 @@ local function build_platform_ui(player)
   }
   frame.auto_center = true
 
-  local platforms = get_space_platforms(player.force)
-  if not (platforms and next(platforms)) then
+  local platforms = collect_platform_surfaces()
+  if #platforms == 0 then
     frame.add{
       type = "label",
       caption = {"gui.space-platform-org-ui-no-platforms"}
@@ -47,13 +67,11 @@ local function build_platform_ui(player)
   scroll.style.vertically_stretchable = true
   scroll.style.horizontally_stretchable = true
 
-  for _, data in pairs(platforms) do
-    local platform = data.platform
-    local caption = (platform and platform.name) or data.surface_name
+  for _, entry in ipairs(platforms) do
     scroll.add{
       type = "button",
-      name = BUTTON_PREFIX .. tostring(platform and platform.index),
-      caption = caption
+      name = BUTTON_PREFIX .. entry.surface_name,
+      caption = entry.caption
     }
   end
 end
@@ -80,16 +98,20 @@ script.on_event(defines.events.on_gui_click, function(event)
   if not (element and element.valid and player) then return end
 
   if string.sub(element.name, 1, #BUTTON_PREFIX) == BUTTON_PREFIX then
-    local id = tonumber(string.sub(element.name, #BUTTON_PREFIX + 1))
-    local platforms = get_space_platforms(player.force)
-    if id and platforms then
-      local entry = platforms[id]
-      local platform = entry and entry.platform
-      if platform then
-        player.opened = platform
-        local ui = player.gui.screen[UI_NAME]
-        if ui and ui.valid then ui.destroy() end
+    local surface_name = string.sub(element.name, #BUTTON_PREFIX + 1)
+    local platforms = collect_platform_surfaces()
+    local entry
+    for _, data in ipairs(platforms) do
+      if data.surface_name == surface_name then
+        entry = data
+        break
       end
+    end
+    local platform = entry and entry.platform
+    if platform then
+      pcall(function() player.opened = platform end)
+      local ui = player.gui.screen[UI_NAME]
+      if ui and ui.valid then ui.destroy() end
     end
   end
 end)
