@@ -2,9 +2,6 @@
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
-local SIZE_INC   = 40
-local HEADER_DEC = "sp-ui-size-dec"
-local HEADER_INC = "sp-ui-size-inc"
 
 local function ui_state(pi)
   global.spui = global.spui or {}
@@ -41,22 +38,36 @@ local function build_platform_ui(player)
   frame.style.minimal_width  = st.w
   frame.style.minimal_height = st.h
 
-  local header = frame.add{ type="flow", direction="horizontal", name="sp_header" }
-  header.add{ type="label", caption={"gui.space-platforms-org-ui-title"}, style="frame_title" }
-  header.add{ type="empty-widget", style="draggable_space_header" }.style.horizontally_stretchable = true
+  local header = frame.add{ type = "flow", direction = "horizontal", name = "sp_header" }
+  header.add{ type = "label", caption = {"gui.space-platforms-org-ui-title"}, style = "frame_title" }
+  header.add{ type = "empty-widget", style = "draggable_space_header" }.style.horizontally_stretchable = true
   header.add{
-    type="sprite-button",
-    name=HEADER_DEC,
-    sprite="utility/arrow-left",
-    tooltip="Narrower",
-    style="frame_action_button"
+    type = "sprite-button",
+    name = "sp-size-w-dec",
+    sprite = "utility/arrow-left",
+    tooltip = "Narrower",
+    style = "frame_action_button",
   }
   header.add{
-    type="sprite-button",
-    name=HEADER_INC,
-    sprite="utility/arrow-right",
-    tooltip="Wider",
-    style="frame_action_button"
+    type = "sprite-button",
+    name = "sp-size-w-inc",
+    sprite = "utility/arrow-right",
+    tooltip = "Wider",
+    style = "frame_action_button",
+  }
+  header.add{
+    type = "sprite-button",
+    name = "sp-size-h-dec",
+    sprite = "utility/arrow-up",
+    tooltip = "Shorter",
+    style = "frame_action_button",
+  }
+  header.add{
+    type = "sprite-button",
+    name = "sp-size-h-inc",
+    sprite = "utility/arrow-down",
+    tooltip = "Taller",
+    style = "frame_action_button",
   }
 
   -- Collect platforms from the force
@@ -68,8 +79,6 @@ local function build_platform_ui(player)
   local scroll = frame.add{ type = "scroll-pane", name = "platform_scroll" }
   scroll.style.vertically_stretchable   = true
   scroll.style.horizontally_stretchable = true
-  scroll.style.minimal_width  = st.w - 20
-  scroll.style.minimal_height = st.h - 60
 
   local list = scroll.add{ type = "flow", name = "platform_list", direction = "vertical" }
   list.style.vertically_stretchable   = true
@@ -81,11 +90,12 @@ local function build_platform_ui(player)
   end
 
   for _, entry in ipairs(entries) do
+    local idx = entry.platform_index or entry.platform_id or (entry.platform and entry.platform.index) or entry.id
     local b = list.add{
       type = "button",
-      name = BUTTON_PREFIX .. entry.id,
-      caption = entry.caption,
-      tags = { platform_index = entry.id }
+      name = BUTTON_PREFIX .. tostring(idx),
+      caption = entry.caption or entry.surface_name,
+      tags = { platform_index = idx }
     }
     if b and b.valid then
       b.style.horizontally_stretchable = true
@@ -96,6 +106,12 @@ local function build_platform_ui(player)
       b.style.bottom_padding = 2
     end
   end
+end
+
+local function rebuild_ui(player)
+  local existing = player.gui.screen[UI_NAME]
+  if existing and existing.valid then existing.destroy() end
+  build_platform_ui(player)
 end
 
 local function toggle_platform_ui(player)
@@ -117,62 +133,53 @@ script.on_event("space-platform-org-ui-toggle", function(event)
   end
 end)
 
+local function open_platform_view(player, pid)
+  if not pid then return end
+  local plat
+  if player.force and player.force.valid and player.force.platforms then
+    for _, p in pairs(player.force.platforms) do
+      if p.index == pid then plat = p; break end
+    end
+  end
+  if not (plat and plat.valid) then
+    player.print("Platform not found.")
+    return
+  end
+  local surf = plat.surface
+  if not (surf and surf.valid) then
+    player.print("Platform surface unavailable.")
+    return
+  end
+  local pos = plat.position or {0,0}
+  local safe = surf.find_non_colliding_position("character", pos, 64, 1) or pos
+  local ok = pcall(function()
+    player.set_controller{
+      type = defines.controllers.remote,
+      surface = surf,
+      position = safe,
+      start_zoom = 0.7,
+    }
+  end)
+  if not ok then
+    pcall(function() player.zoom_to_world(safe, 0.5, surf) end)
+  end
+end
+
 script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
   local st = ui_state(player.index)
 
-  if element.name == HEADER_DEC or element.name == HEADER_INC then
-    local delta = (element.name == HEADER_INC) and SIZE_INC or -SIZE_INC
-    st.w = math.max(300, math.min(900, st.w + delta))
-    local existing = player.gui.screen[UI_NAME]
-    if existing and existing.valid then existing.destroy() end
-    build_platform_ui(player)
-    return
-  end
+  if element.name == "sp-size-w-dec" then st.w = math.max(320, (st.w or 440) - 40); rebuild_ui(player); return end
+  if element.name == "sp-size-w-inc" then st.w = (st.w or 440) + 40; rebuild_ui(player); return end
+  if element.name == "sp-size-h-dec" then st.h = math.max(320, (st.h or 520) - 40); rebuild_ui(player); return end
+  if element.name == "sp-size-h-inc" then st.h = (st.h or 520) + 40; rebuild_ui(player); return end
 
-  -- Guard: respond only to our buttons
   if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
 
-  -- Prefer tags over parsing
   local pid = element.tags and element.tags.platform_index
-  if not pid then
-    pid = tonumber(element.name:sub(#BUTTON_PREFIX + 1))
-  end
-  if not pid then
-    log("UI click: no platform id on " .. element.name)
-    return
-  end
-
-  -- Resolve platform
-  local plat = st.platforms[pid]
-  if not (plat and plat.valid) then
-    log("UI click: platform not found for id=" .. tostring(pid))
-    return
-  end
-
-  -- Resolve surface and a safe position (avoid blocked {0,0})
-  local surf = plat.surface
-  if not (surf and surf.valid) then
-    log("UI click: missing/invalid surface for id=" .. tostring(pid))
-    return
-  end
-  local pos = surf.find_non_colliding_position("character", {x=0, y=0}, 64, 1) or {x=0, y=0}
-
-  -- Try map view, then zoom fallback (both protected)
-  local ok = pcall(function()
-    player.open_map{ position = pos, surface = surf, scale = 1 }
-  end)
-  if not ok then
-    pcall(function()
-      player.zoom_to_world(pos, 0.5, surf)
-    end)
-  end
-
-  -- Temporary trace (remove after verifying)
-  log("UI click: opened platform " .. tostring(pid) ..
-      " on surface=" .. tostring(surf.name) .. " at " .. serpent.line(pos))
+  if pid then open_platform_view(player, pid); return end
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
