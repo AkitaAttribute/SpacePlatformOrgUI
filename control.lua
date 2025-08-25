@@ -30,6 +30,11 @@ end
 
 local function print_global_table(player)
   player.print("Contents of global table (platform/space/surface):")
+  if not global then
+    player.print("  Global table is nil (no entries yet)")
+    return
+  end
+
   local has_entries = false
   for k, v in pairs(global) do
     local key = tostring(k)
