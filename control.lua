@@ -38,6 +38,7 @@ local function build_platform_ui(player)
 
   if #entries == 0 then
     list.add{ type = "label", caption = {"gui.space-platforms-org-ui-no-platforms"} }
+    log("UI: list children=" .. tostring(#list.children))
     return
   end
 
@@ -58,6 +59,7 @@ local function build_platform_ui(player)
       log("UI: failed to create button for id=" .. tostring(entry.id))
     end
   end
+  log("UI: list children=" .. tostring(#list.children))
 end
 
 local function toggle_platform_ui(player)
@@ -79,7 +81,7 @@ end)
 script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   if not (element and element.valid) then return end
-  if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
+  if not (element.name and element.name:sub(1, #BUTTON_PREFIX) == BUTTON_PREFIX) then return end
 
   local player = game.get_player(event.player_index)
   if not (player and player.valid) then return end
