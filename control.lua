@@ -1,18 +1,23 @@
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
 
--- Collects all space platforms owned by the given force.
--- The Space Age expansion exposes platforms as surfaces with
--- an attached `platform` object. This helper scans through all
--- game surfaces, gathering any platforms that belong to the
--- specified force.
 local function get_space_platforms(force)
   if not (force and force.valid) then return nil end
   local platforms = {}
-  for _, surface in pairs(game.surfaces) do
-    local platform = surface.platform
-    if platform and platform.valid and platform.force == force then
-      platforms[platform.index] = platform
+  -- Prefer the direct API provided by Space Age if available.
+  if game.space_platforms then
+    for _, platform in pairs(game.space_platforms) do
+      if platform.valid and platform.force == force then
+        platforms[platform.index] = platform
+      end
+    end
+  else
+    -- Fallback for older versions: derive from surfaces.
+    for _, surface in pairs(game.surfaces) do
+      local platform = surface.platform
+      if platform and platform.valid and platform.force == force then
+        platforms[platform.index] = platform
+      end
     end
   end
   if next(platforms) then return platforms end
@@ -47,7 +52,7 @@ local function build_platform_ui(player)
   scroll.style.horizontally_stretchable = true
 
   for _, platform in pairs(platforms) do
-    local caption = (platform.surface and platform.surface.name) or ("Platform " .. (platform.index or _))
+    local caption = platform.name or ("Platform " .. (platform.index or _))
     scroll.add{
       type = "button",
       name = BUTTON_PREFIX .. tostring(platform.index or _),
