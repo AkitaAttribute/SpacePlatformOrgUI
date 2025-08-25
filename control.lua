@@ -78,10 +78,10 @@ local function build_platform_ui(player)
   local header = frame.add{ type = "flow", direction = "horizontal", name = "sp_header" }
   header.add{ type = "label", caption = {"gui.space-platforms-org-ui-title"}, style = "frame_title" }
   header.add{ type = "empty-widget", name = "drag_handle", style = "draggable_space_header" }.style.horizontally_stretchable = true
-  safe_sprite_button(header, HEADER_W_DEC, "utility/left_arrow",  {"narrower"})
-  safe_sprite_button(header, HEADER_W_INC, "utility/right_arrow", {"wider"})
-  safe_sprite_button(header, HEADER_H_DEC, "utility/down_arrow",  {"shorter"})
-  safe_sprite_button(header, HEADER_H_INC, "utility/up_arrow",    {"taller"})
+  safe_sprite_button(header, HEADER_W_DEC, "utility/left_arrow",  {"", "Narrower"})
+  safe_sprite_button(header, HEADER_W_INC, "utility/right_arrow", {"", "Wider"})
+  safe_sprite_button(header, HEADER_H_DEC, "utility/down_arrow",  {"", "Shorter"})
+  safe_sprite_button(header, HEADER_H_INC, "utility/up_arrow",    {"", "Taller"})
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
   log("UI: rendering " .. tostring(#entries) .. " platforms")
@@ -159,7 +159,8 @@ local function open_platform_view(player, pid)
     log("UI: platform surface invalid id=" .. tostring(pid))
     return
   end
-  local pos = plat.position or {0,0}
+  -- Resolve a safe position without touching plat.position (it doesn't exist)
+  local pos = {x = 0, y = 0}
   local safe = surf.find_non_colliding_position("character", pos, 64, 1) or pos
   pcall(function()
     player.set_controller{
