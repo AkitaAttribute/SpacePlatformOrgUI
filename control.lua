@@ -75,13 +75,28 @@ local function build_platform_ui(player)
   frame.style.minimal_width  = st.w
   frame.style.minimal_height = st.h
 
-  local header = frame.add{ type = "flow", direction = "horizontal", name = "sp_header" }
-  header.add{ type = "label", caption = {"gui.space-platforms-org-ui-title"}, style = "frame_title" }
-  header.add{ type = "empty-widget", name = "drag_handle", style = "draggable_space_header" }.style.horizontally_stretchable = true
-  safe_sprite_button(header, HEADER_W_DEC, "utility/left_arrow",  {"", "Narrower"})
-  safe_sprite_button(header, HEADER_W_INC, "utility/right_arrow", {"", "Wider"})
-  safe_sprite_button(header, HEADER_H_DEC, "utility/down_arrow",  {"", "Shorter"})
-  safe_sprite_button(header, HEADER_H_INC, "utility/up_arrow",    {"", "Taller"})
+  -- header wrapper uses vertical flow so we can stack rows
+  local header = frame.add{ type = "flow", direction = "vertical", name = "sp_header" }
+
+  -- Row 1: title + drag handle
+  local titlebar = header.add{ type = "flow", direction = "horizontal", name = "sp_titlebar" }
+  titlebar.add{
+    type = "label",
+    caption = {"gui.space-platforms-org-ui-title"},
+    style = "frame_title"
+  }
+  local drag = titlebar.add{ type = "empty-widget", name = "drag_handle", style = "draggable_space_header" }
+  drag.style.horizontally_stretchable = true
+  drag.style.height = 24
+  drag.drag_target = frame   -- IMPORTANT: makes the whole frame draggable
+
+  -- Row 2: left-aligned resize controls
+  local controls = header.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
+  controls.style.horizontal_spacing = 2
+  safe_sprite_button(controls, HEADER_W_DEC, "utility/left_arrow",  "Narrower")
+  safe_sprite_button(controls, HEADER_W_INC, "utility/right_arrow", "Wider")
+  safe_sprite_button(controls, HEADER_H_DEC, "utility/down_arrow",  "Shorter")
+  safe_sprite_button(controls, HEADER_H_INC, "utility/up_arrow",    "Taller")
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
   log("UI: rendering " .. tostring(#entries) .. " platforms")
