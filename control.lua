@@ -226,7 +226,6 @@ script.on_event(defines.events.on_gui_click, function(event)
   st.w = math.max(320, math.min(900, st.w + (delta_w or 0)))
   st.h = math.max(240, math.min(900, st.h + (delta_h or 0)))
   local g = get_global()
-  g.spui = g.spui or {}
   g.spui[player.index] = st
   local frame = player.gui.screen[UI_NAME]
   if frame and frame.valid then
