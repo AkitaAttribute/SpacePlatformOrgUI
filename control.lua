@@ -30,7 +30,10 @@ local function print_surface_properties(player)
         end
       end
     end
-    player.print("Surface '" .. surface.name .. "' properties: " .. table.concat(props, ", "))
+    player.print("Surface '" .. surface.name .. "' properties (" .. #props .. "):")
+    for _, prop in ipairs(props) do
+      player.print("  " .. prop)
+    end
   end
 end
 
