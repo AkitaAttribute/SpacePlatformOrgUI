@@ -29,44 +29,57 @@ local function print_remote_interfaces(player)
 end
 
 local function print_platform_surfaces(player)
-  player.print("Surfaces starting with 'platform-':")
+  local function print_log(msg)
+    player.print(msg)
+    log(msg)
+  end
+
+  local function inspect_table(tbl, prefix, depth)
+    depth = depth or 1
+    if depth > 2 then return end
+    local ok_keys, keys = pcall(function()
+      local ks = {}
+      for k in pairs(tbl) do
+        ks[#ks + 1] = k
+      end
+      return ks
+    end)
+    if not ok_keys then
+      print_log(prefix .. "(unable to iterate table)")
+      return
+    end
+    for _, k in ipairs(keys) do
+      local ok_val, v = pcall(function() return tbl[k] end)
+      local key_str = tostring(k)
+      if not ok_val then
+        print_log(prefix .. key_str .. ": [error reading]")
+      else
+        local t = type(v)
+        if t == "string" or t == "number" or t == "boolean" then
+          local ok_tostr, vstr = pcall(tostring, v)
+          print_log(prefix .. key_str .. ": " .. (ok_tostr and vstr or "[unprintable]"))
+        elseif t == "table" then
+          print_log(prefix .. key_str .. ": [table]")
+          inspect_table(v, prefix .. "  ", depth + 1)
+        elseif t ~= "function" then
+          print_log(prefix .. key_str .. ": [" .. t .. "]")
+        end
+      end
+    end
+  end
+
+  print_log("Surfaces starting with 'platform-':")
   local found = false
   for _, surface in pairs(game.surfaces) do
     local ok_name, surface_name = pcall(function() return surface.name end)
     if ok_name and type(surface_name) == "string" and surface_name:find("^platform%-") then
       found = true
-      player.print("  " .. surface_name)
-      local ok_fields, fields = pcall(function()
-        local t = {}
-        for k, v in pairs(surface) do
-          if type(v) ~= "function" then t[k] = v end
-        end
-        return t
-      end)
-      if ok_fields and fields then
-        local had = false
-        for k, v in pairs(fields) do
-          had = true
-          local value_str
-          if type(v) == "table" then
-            local ok_serp, serp_str = pcall(function() return serpent.line(v, {comment = false}) end)
-            value_str = ok_serp and serp_str or "[table]"
-          else
-            local ok_tostr, s = pcall(tostring, v)
-            value_str = ok_tostr and s or "[unprintable]"
-          end
-          player.print("    " .. k .. ": " .. value_str)
-        end
-        if not had then
-          player.print("    (no non-function fields)")
-        end
-      else
-        player.print("    (unable to read fields)")
-      end
+      print_log("  " .. surface_name)
+      inspect_table(surface, "    ", 1)
     end
   end
   if not found then
-    player.print("  (none)")
+    print_log("  (none)")
   end
 end
 
