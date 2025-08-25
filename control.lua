@@ -1,4 +1,4 @@
--- luacheck: globals remote log
+-- luacheck: globals remote
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
@@ -17,44 +17,12 @@ local function get_space_platforms(force)
   return nil
 end
 
-local function print_surface_properties(player)
-  for _, surface in pairs(game.surfaces) do
-    local props = {}
-    -- Try to gather visible properties for debugging purposes.
-    local mt = getmetatable(surface)
-    if mt and mt.__index then
-      for k, _ in pairs(mt.__index) do
-        if type(k) == "string" then
-          local ok, v = pcall(function() return surface[k] end)
-          if ok and type(v) ~= "function" then
-            table.insert(props, k .. "=" .. tostring(v))
-          end
-        end
-      end
-    end
-    player.print("Surface '" .. surface.name .. "' properties (" .. #props .. "):")
-    for _, prop in ipairs(props) do
-      player.print("  " .. prop)
-    end
-  end
-end
-
 local function print_remote_interfaces(player)
   for name, interface in pairs(remote.interfaces) do
-    local count = 0
-    for _, func in pairs(interface) do
-      if type(func) == "function" then
-        count = count + 1
-      end
-    end
-    local header = "Remote interface '" .. name .. "' functions (" .. count .. "):"
-    player.print(header)
-    log(header)
+    player.print("Remote interface '" .. name .. "':")
     for func_name, func in pairs(interface) do
       if type(func) == "function" then
-        local line = "  " .. func_name
-        player.print(line)
-        log(line)
+        player.print("  " .. func_name)
       end
     end
   end
@@ -102,7 +70,6 @@ local function toggle_platform_ui(player)
   if existing and existing.valid then
     existing.destroy()
   else
-    print_surface_properties(player)
     build_platform_ui(player)
   end
 end
