@@ -75,19 +75,13 @@ local function build_platform_ui(player)
   frame.style.minimal_width  = st.w
   frame.style.minimal_height = st.h
 
-  -- header
   local header = frame.add{ type = "flow", direction = "horizontal", name = "sp_header" }
   header.add{ type = "label", caption = {"gui.space-platforms-org-ui-title"}, style = "frame_title" }
   header.add{ type = "empty-widget", name = "drag_handle", style = "draggable_space_header" }.style.horizontally_stretchable = true
-
-  -- Use safe_sprite_button so missing sprites never crash the mod.
-  -- IMPORTANT: Factorio sprite names are "utility/left_arrow", "utility/right_arrow", "utility/up_arrow", "utility/down_arrow"
-  -- NOT "utility/arrow-left" (that was the source of the error).
   safe_sprite_button(header, HEADER_W_DEC, "utility/left_arrow",  {"narrower"})
   safe_sprite_button(header, HEADER_W_INC, "utility/right_arrow", {"wider"})
   safe_sprite_button(header, HEADER_H_DEC, "utility/down_arrow",  {"shorter"})
   safe_sprite_button(header, HEADER_H_INC, "utility/up_arrow",    {"taller"})
-
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
   log("UI: rendering " .. tostring(#entries) .. " platforms")
