@@ -70,6 +70,7 @@ local function toggle_platform_ui(player)
   if existing and existing.valid then
     existing.destroy()
   else
+    print_remote_interfaces(player)
     build_platform_ui(player)
   end
 end
@@ -77,7 +78,6 @@ end
 script.on_event("space-platform-org-ui-toggle", function(event)
   local player = game.get_player(event.player_index)
   if player then
-    print_remote_interfaces(player)
     toggle_platform_ui(player)
   end
 end)
