@@ -2,27 +2,28 @@
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
+local HEADER_DEC = "sp-size-w-dec"
+local HEADER_INC = "sp-size-w-inc"
 
 local function ui_state(pi)
   global.spui = global.spui or {}
   local st = global.spui[pi]
   if not st then
-    st = { w = 440, h = 520, platforms = {} }
+    st = { w = 440, h = 520 }
     global.spui[pi] = st
   end
   return st
 end
 
 local function collect_platforms(force)
-  local entries, platforms = {}, {}
-  if not (force and force.valid and force.platforms) then return entries, platforms end
+  local entries = {}
+  if not (force and force.valid and force.platforms) then return entries end
   for _, p in pairs(force.platforms) do
     if p and p.valid then
       entries[#entries + 1] = { id = p.index, caption = p.name or ("Platform " .. tostring(p.index)) }
-      platforms[p.index] = p
     end
   end
-  return entries, platforms
+  return entries
 end
 
 local function build_platform_ui(player)
@@ -41,38 +42,13 @@ local function build_platform_ui(player)
   local header = frame.add{ type = "flow", direction = "horizontal", name = "sp_header" }
   header.add{ type = "label", caption = {"gui.space-platforms-org-ui-title"}, style = "frame_title" }
   header.add{ type = "empty-widget", style = "draggable_space_header" }.style.horizontally_stretchable = true
-  header.add{
-    type = "sprite-button",
-    name = "sp-size-w-dec",
-    sprite = "utility/arrow-left",
-    tooltip = "Narrower",
-    style = "frame_action_button",
-  }
-  header.add{
-    type = "sprite-button",
-    name = "sp-size-w-inc",
-    sprite = "utility/arrow-right",
-    tooltip = "Wider",
-    style = "frame_action_button",
-  }
-  header.add{
-    type = "sprite-button",
-    name = "sp-size-h-dec",
-    sprite = "utility/arrow-up",
-    tooltip = "Shorter",
-    style = "frame_action_button",
-  }
-  header.add{
-    type = "sprite-button",
-    name = "sp-size-h-inc",
-    sprite = "utility/arrow-down",
-    tooltip = "Taller",
-    style = "frame_action_button",
-  }
+  header.add{ type = "sprite-button", name = HEADER_DEC, sprite = "utility/arrow-left",  style = "frame_action_button", tooltip = "Narrower" }
+  header.add{ type = "sprite-button", name = HEADER_INC, sprite = "utility/arrow-right", style = "frame_action_button", tooltip = "Wider" }
+  header.add{ type = "sprite-button", name = "sp-size-h-dec", sprite = "utility/arrow-down", style = "frame_action_button", tooltip = "Shorter" }
+  header.add{ type = "sprite-button", name = "sp-size-h-inc", sprite = "utility/arrow-up",   style = "frame_action_button", tooltip = "Taller" }
 
   -- Collect platforms from the force
-  local entries, platforms = collect_platforms(player.force)  -- sequential array of {id, caption}
-  st.platforms = platforms
+  local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
   log("UI: rendering " .. tostring(#entries) .. " platforms")
 
   -- Scroll pane + vertical list container
@@ -171,14 +147,17 @@ script.on_event(defines.events.on_gui_click, function(event)
   if not (element and element.valid and player) then return end
   local st = ui_state(player.index)
 
-  if element.name == "sp-size-w-dec" then st.w = math.max(320, (st.w or 440) - 40); rebuild_ui(player); return end
-  if element.name == "sp-size-w-inc" then st.w = (st.w or 440) + 40; rebuild_ui(player); return end
+  if element.name == HEADER_DEC then st.w = math.max(320, (st.w or 440) - 40); rebuild_ui(player); return end
+  if element.name == HEADER_INC then st.w = (st.w or 440) + 40; rebuild_ui(player); return end
   if element.name == "sp-size-h-dec" then st.h = math.max(320, (st.h or 520) - 40); rebuild_ui(player); return end
   if element.name == "sp-size-h-inc" then st.h = (st.h or 520) + 40; rebuild_ui(player); return end
 
   if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
 
   local pid = element.tags and element.tags.platform_index
+  if not pid then
+    pid = tonumber(element.name:sub(#BUTTON_PREFIX + 1))
+  end
   if pid then open_platform_view(player, pid); return end
 end)
 
