@@ -9,24 +9,25 @@ local function collect_platforms(force)
     return force and force.platforms
   end)
   if ok_list and list then
-    for _, platform in pairs(list) do
+    for _, p in pairs(list) do
       local ok_valid, valid = pcall(function()
-        return platform.valid
+        return p.valid
       end)
-      if ok_valid and valid then
-        local ok_index, index = pcall(function()
-          return platform.index
+      local ok_index, index = pcall(function()
+        return p.index
+      end)
+      if ok_valid and valid and ok_index and index then
+        local name
+        local ok_name, n = pcall(function()
+          return p.name
         end)
-        if ok_index and index then
-          local caption = "Platform " .. index
-          local ok_name, name = pcall(function()
-            return platform.name
-          end)
-          if ok_name and type(name) == "string" and name ~= "" then
-            caption = name
-          end
-          table.insert(entries, { id = index, caption = caption })
+        if ok_name and type(n) == "string" and n ~= "" then
+          name = n
         end
+        table.insert(entries, {
+          id = index,
+          caption = name or ("Platform " .. tostring(index))
+        })
       end
     end
   end
@@ -43,15 +44,7 @@ local function build_platform_ui(player)
   }
   frame.auto_center = true
 
-  local platforms = collect_platforms(player.force)
-  log("platform_count=" .. tostring(#platforms))
-  if #platforms == 0 then
-    frame.add{
-      type = "label",
-      caption = "No platforms found"
-    }
-    return
-  end
+  local entries = collect_platforms(player.force)
 
   local scroll = frame.add{
     type = "scroll-pane",
@@ -68,7 +61,17 @@ local function build_platform_ui(player)
     direction = "vertical"
   }
 
-  for _, entry in pairs(platforms) do
+  log("UI: rendering " .. tostring(#entries) .. " platforms")
+
+  if #entries == 0 then
+    list.add{
+      type = "label",
+      caption = "No platforms found"
+    }
+    return
+  end
+
+  for _, entry in ipairs(entries) do
     list.add{
       type = "button",
       name = BUTTON_PREFIX .. entry.id,
@@ -101,20 +104,17 @@ script.on_event(defines.events.on_gui_click, function(event)
 
   if string.sub(element.name, 1, #BUTTON_PREFIX) == BUTTON_PREFIX then
     local tags = element.tags
-    local index = tags and tags.platform_index
-    if index then
-      local ok_list, list = pcall(function()
-        return player.force.platforms
-      end)
-      local platform = ok_list and list and list[index]
-      local ok_valid = false
-      if platform then
-        ok_valid = pcall(function()
-          return platform.valid
-        end)
+    local idx = tags and tags.platform_index
+    if idx then
+      local plat
+      for _, p in pairs(player.force.platforms or {}) do
+        if p and p.valid and p.index == idx then
+          plat = p
+          break
+        end
       end
-      if platform and ok_valid and platform.valid then
-        pcall(function() player.opened = platform end)
+      if plat and plat.valid then
+        pcall(function() player.opened = plat end)
       end
       local ui = player.gui.screen[UI_NAME]
       if ui and ui.valid then ui.destroy() end
