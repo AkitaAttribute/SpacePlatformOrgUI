@@ -30,7 +30,11 @@ local function collect_platform_surfaces()
         log_message = log_message .. ", platform=nil"
       end
       log(log_message)
-      platforms[surface_name] = {platform = (ok_platform and platform) or nil, caption = caption}
+      table.insert(platforms, {
+        surface_name = surface_name,
+        caption = caption,
+        platform = ok_platform and platform or nil
+      })
     end
   end
   return platforms
@@ -46,7 +50,7 @@ local function build_platform_ui(player)
   frame.auto_center = true
 
   local platforms = collect_platform_surfaces()
-  if not next(platforms) then
+  if #platforms == 0 then
     frame.add{
       type = "label",
       caption = {"gui.space-platform-org-ui-no-platforms"}
@@ -63,11 +67,11 @@ local function build_platform_ui(player)
   scroll.style.vertically_stretchable = true
   scroll.style.horizontally_stretchable = true
 
-  for name, data in pairs(platforms) do
+  for _, entry in ipairs(platforms) do
     scroll.add{
       type = "button",
-      name = BUTTON_PREFIX .. name,
-      caption = data.caption
+      name = BUTTON_PREFIX .. entry.surface_name,
+      caption = entry.caption
     }
   end
 end
@@ -94,9 +98,15 @@ script.on_event(defines.events.on_gui_click, function(event)
   if not (element and element.valid and player) then return end
 
   if string.sub(element.name, 1, #BUTTON_PREFIX) == BUTTON_PREFIX then
-    local id = string.sub(element.name, #BUTTON_PREFIX + 1)
+    local surface_name = string.sub(element.name, #BUTTON_PREFIX + 1)
     local platforms = collect_platform_surfaces()
-    local entry = platforms[id]
+    local entry
+    for _, data in ipairs(platforms) do
+      if data.surface_name == surface_name then
+        entry = data
+        break
+      end
+    end
     local platform = entry and entry.platform
     if platform then
       pcall(function() player.opened = platform end)
