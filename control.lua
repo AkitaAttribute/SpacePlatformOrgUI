@@ -1,4 +1,4 @@
--- luacheck: globals remote global
+-- luacheck: globals remote serpent
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
@@ -28,34 +28,45 @@ local function print_remote_interfaces(player)
   end
 end
 
-local function print_global_table(player)
-  player.print("Contents of global table (platform/space/surface):")
-  if not global then
-    player.print("  Global table is nil (no entries yet)")
-    return
-  end
-
-  local has_entries = false
-  for k, v in pairs(global) do
-    local key = tostring(k)
-    local lower = string.lower(key)
-    if lower:find("platform") or lower:find("space") or lower:find("surface") then
-      has_entries = true
-      local summary
-      if type(v) == "table" then
-        local count = 0
-        for _ in pairs(v) do count = count + 1 end
-        summary = "table with " .. count .. " keys"
-      elseif type(v) == "string" then
-        summary = "string of length " .. #v
+local function print_platform_surfaces(player)
+  player.print("Surfaces starting with 'platform-':")
+  local found = false
+  for _, surface in pairs(game.surfaces) do
+    local ok_name, surface_name = pcall(function() return surface.name end)
+    if ok_name and type(surface_name) == "string" and surface_name:find("^platform%-") then
+      found = true
+      player.print("  " .. surface_name)
+      local ok_fields, fields = pcall(function()
+        local t = {}
+        for k, v in pairs(surface) do
+          if type(v) ~= "function" then t[k] = v end
+        end
+        return t
+      end)
+      if ok_fields and fields then
+        local had = false
+        for k, v in pairs(fields) do
+          had = true
+          local value_str
+          if type(v) == "table" then
+            local ok_serp, serp_str = pcall(function() return serpent.line(v, {comment = false}) end)
+            value_str = ok_serp and serp_str or "[table]"
+          else
+            local ok_tostr, s = pcall(tostring, v)
+            value_str = ok_tostr and s or "[unprintable]"
+          end
+          player.print("    " .. k .. ": " .. value_str)
+        end
+        if not had then
+          player.print("    (no non-function fields)")
+        end
       else
-        summary = tostring(v) .. " (" .. type(v) .. ")"
+        player.print("    (unable to read fields)")
       end
-      player.print("  " .. key .. ": " .. summary)
     end
   end
-  if not has_entries then
-    player.print("  (no matching keys)")
+  if not found then
+    player.print("  (none)")
   end
 end
 
@@ -102,7 +113,7 @@ local function toggle_platform_ui(player)
     existing.destroy()
   else
     print_remote_interfaces(player)
-    print_global_table(player)
+    print_platform_surfaces(player)
     build_platform_ui(player)
   end
 end
