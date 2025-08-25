@@ -18,11 +18,6 @@ local function get_global()
   return g
 end
 
-do
-  local g = get_global()
-  log("[sp-ui] global type: " .. tostring(type(g)))
-end
-
 local function ui_state(pi)
   local g = get_global()
   g.spui = g.spui or {}
