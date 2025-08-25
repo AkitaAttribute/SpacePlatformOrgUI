@@ -30,13 +30,21 @@ local function build_platform_ui(player)
   -- Scroll pane + vertical list container
   local scroll = frame.add{ type = "scroll-pane", name = "platform_scroll" }
   scroll.style.maximal_height = 400
-  scroll.style.minimal_width = 250
+  scroll.style.minimal_width  = 260
+  scroll.style.minimal_height = 220
   scroll.style.vertically_stretchable = true
   scroll.style.horizontally_stretchable = true
 
   local list = scroll.add{ type = "flow", name = "platform_list", direction = "vertical" }
   list.style.vertically_stretchable = true
   list.style.horizontally_stretchable = true
+  list.style.minimal_width  = 260
+  list.style.minimal_height = 200
+
+  -- 1) Add an always-visible probe label at the top of the list
+  local probe = list.add{ type = "label", caption = "[Space Platforms]" }
+  probe.style.minimal_width  = 220
+  probe.style.minimal_height = 16
 
   if #entries == 0 then
     list.add{ type = "label", caption = {"gui.space-platforms-org-ui-no-platforms"} }
@@ -61,6 +69,10 @@ local function build_platform_ui(player)
     else
       log("UI: failed to create button for id=" .. tostring(entry.id))
     end
+
+    local lbl = list.add{ type = "label", caption = entry.caption }
+    lbl.style.minimal_width  = 220
+    lbl.style.minimal_height = 16
   end
   log("UI: list children=" .. tostring(#list.children))
   log("UI: list child names = " .. table.concat(list.children_names, ","))
