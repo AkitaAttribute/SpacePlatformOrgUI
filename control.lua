@@ -2,8 +2,8 @@
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
-local HEADER_W_DEC = "sp-size-w-dec"
-local HEADER_W_INC = "sp-size-w-inc"
+local HEADER_M_DEC = "sp-size-m-dec"
+local HEADER_M_INC = "sp-size-m-inc"
 local HEADER_H_DEC = "sp-size-h-dec"
 local HEADER_H_INC = "sp-size-h-inc"
 local SIZE_INC = 40
@@ -43,6 +43,25 @@ local function collect_platforms(force)
   return entries
 end
 
+local function safe_sprite_button(parent, name, sprite, tooltip)
+  local ok, elem = pcall(function()
+    return parent.add{
+      type   = "sprite-button",
+      name   = name,
+      sprite = sprite,
+      style  = "frame_action_button",
+      tooltip = tooltip
+    }
+  end)
+  if ok and elem then return elem end
+  -- Fallback so missing sprites never crash the mod
+  return parent.add{
+    type = "button",
+    name = name,
+    caption = tooltip or name
+  }
+end
+
 local function build_platform_ui(player)
   local frame = player.gui.screen.add{
     type = "frame",
@@ -59,10 +78,10 @@ local function build_platform_ui(player)
   local header = frame.add{ type = "flow", direction = "horizontal", name = "sp_header" }
   header.add{ type = "label", caption = {"gui.space-platforms-org-ui-title"}, style = "frame_title" }
   header.add{ type = "empty-widget", style = "draggable_space_header" }.style.horizontally_stretchable = true
-  header.add{ type = "sprite-button", name = HEADER_W_DEC, sprite = "utility/arrow-left",  style = "frame_action_button", tooltip = "Narrower" }
-  header.add{ type = "sprite-button", name = HEADER_W_INC, sprite = "utility/arrow-right", style = "frame_action_button", tooltip = "Wider" }
-  header.add{ type = "sprite-button", name = HEADER_H_DEC, sprite = "utility/arrow-down", style = "frame_action_button", tooltip = "Shorter" }
-  header.add{ type = "sprite-button", name = HEADER_H_INC, sprite = "utility/arrow-up",   style = "frame_action_button", tooltip = "Taller" }
+  safe_sprite_button(header, HEADER_M_DEC, "utility/left_arrow",  "Narrower")
+  safe_sprite_button(header, HEADER_M_INC, "utility/right_arrow", "Wider")
+  safe_sprite_button(header, HEADER_H_DEC, "utility/up_arrow",   "Taller")
+  safe_sprite_button(header, HEADER_H_INC, "utility/down_arrow", "Shorter")
 
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
@@ -162,8 +181,8 @@ script.on_event(defines.events.on_gui_click, function(event)
   local st = ui_state(player.index)
 
   local delta_w, delta_h
-  if element.name == HEADER_W_DEC or element.name == HEADER_W_INC then
-    delta_w = (element.name == HEADER_W_DEC) and -SIZE_INC or SIZE_INC
+  if element.name == HEADER_M_DEC or element.name == HEADER_M_INC then
+    delta_w = (element.name == HEADER_M_DEC) and -SIZE_INC or SIZE_INC
   elseif element.name == HEADER_H_DEC or element.name == HEADER_H_INC then
     delta_h = (element.name == HEADER_H_DEC) and -SIZE_INC or SIZE_INC
   else
