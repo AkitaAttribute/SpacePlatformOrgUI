@@ -23,10 +23,60 @@ local function ui_state(pi)
   g.spui = g.spui or {}
   local st = g.spui[pi]
   if not st then
-    st = { w = 440, h = 528 }
+    st = { w = 440, h = 528, loc = nil, scroll = 0 }
     g.spui[pi] = st
   end
   return st
+end
+
+-- Returns st (ui_state) and captures the current frame+scroll into it.
+local function capture_ui_state(player)
+  local st = ui_state(player.index)
+  local frame = player.gui.screen[UI_NAME]
+  if frame and frame.valid then
+    -- size
+    st.w = tonumber(frame.style.minimal_width) or st.w
+    st.h = tonumber(frame.style.minimal_height) or st.h
+    -- position
+    local loc = frame.location
+    if loc and loc.x and loc.y then
+      st.loc = { x = loc.x, y = loc.y }
+    end
+    -- scroll
+    local scroll = frame["platform_scroll"]
+    if scroll and scroll.valid then
+      local sb = scroll.vertical_scrollbar
+      if sb and sb.valid then
+        st.scroll = tonumber(sb.value) or st.scroll or 0
+      end
+    end
+  end
+  return st
+end
+
+-- Applies st (ui_state) to the newly built frame.
+local function apply_ui_state(player)
+  local st = ui_state(player.index)
+  local frame = player.gui.screen[UI_NAME]
+  if not (frame and frame.valid) then return end
+
+  -- size first so location restore uses final frame dimensions
+  if st.w then frame.style.minimal_width  = st.w end
+  if st.h then frame.style.minimal_height = st.h end
+
+  if st.loc and st.loc.x and st.loc.y then
+    frame.location = { x = st.loc.x, y = st.loc.y }
+  end
+
+  local scroll = frame["platform_scroll"]
+  if scroll and scroll.valid then
+    local sb = scroll.vertical_scrollbar
+    if sb and sb.valid and st.scroll then
+      -- clamp to available range
+      local maxv = sb.maximum_value or sb.max_value or sb.value
+      sb.value = math.min(maxv, math.max(0, st.scroll))
+    end
+  end
 end
 
 local function collect_platforms(force)
@@ -71,12 +121,6 @@ local function build_platform_ui(player)
     direction = "vertical"
   }
   frame.auto_center = true
-
-  local st = ui_state(player.index)
-
-  frame.style.minimal_width  = st.w
-  frame.style.minimal_height = st.h
-  if st.x and st.y then frame.location = {x = st.x, y = st.y} end
 
   -- header wrapper uses vertical flow so we can stack rows
   local header = frame.add{ type = "flow", direction = "vertical", name = "sp_header" }
@@ -137,27 +181,25 @@ local function build_platform_ui(player)
 end
 
 local function rebuild_ui(player)
-  local frame = player.gui.screen[UI_NAME]
-  local keep_loc = frame and frame.valid and frame.location
-  local old_scroll = frame and frame.valid and frame["platform_scroll"]
-  local keep_sv = (old_scroll and old_scroll.valid and old_scroll.vertical_scrollbar)
-                    and old_scroll.vertical_scrollbar.value or nil
-  if frame and frame.valid then frame.destroy() end
+  capture_ui_state(player)
+  local existing = player.gui.screen[UI_NAME]
+  if existing and existing.valid then existing.destroy() end
   build_platform_ui(player)
-  local new_frame = player.gui.screen[UI_NAME]
-  if keep_loc then new_frame.location = keep_loc end
-  local new_scroll = new_frame and new_frame.valid and new_frame["platform_scroll"]
-  if new_scroll and new_scroll.valid and new_scroll.vertical_scrollbar and keep_sv then
-    new_scroll.vertical_scrollbar.value = keep_sv
-  end
+  apply_ui_state(player)
 end
 
-local function toggle_platform_ui(player)
+local function toggle_platform_ui(player, refresh)
   local existing = player.gui.screen[UI_NAME]
   if existing and existing.valid then
-    existing.destroy()
+    if refresh then
+      rebuild_ui(player)
+    else
+      capture_ui_state(player)
+      existing.destroy()
+    end
   else
     build_platform_ui(player)
+    apply_ui_state(player)
   end
 end
 
@@ -237,6 +279,8 @@ end)
 script.on_event(defines.events.on_gui_closed, function(event)
   local element = event.element
   if element and element.name == UI_NAME then
+    local player = game.get_player(event.player_index)
+    if player then capture_ui_state(player) end
     element.destroy()
   end
 end)
@@ -245,7 +289,7 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
   local el = event.element
   if not (el and el.valid and el.name == UI_NAME) then return end
   local st = ui_state(event.player_index)
-  st.x, st.y = el.location.x, el.location.y
+  st.loc = {x = el.location.x, y = el.location.y}
 end)
 
 script.on_init(function()
@@ -279,6 +323,6 @@ script.on_event(defines.events.on_surface_created, function(e)
   end
 end)
 
-script.on_event(defines.events.on_surface_deleted, function(e)
+script.on_event(defines.events.on_surface_deleted, function()
   rebuild_all_open()
 end)
