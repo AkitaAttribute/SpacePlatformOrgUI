@@ -23,7 +23,7 @@ local function build_platform_ui(player)
   local frame = player.gui.screen.add{
     type = "frame",
     name = UI_NAME,
-    caption = {"space-platform-org-ui-title"},
+    caption = {"gui.space-platform-org-ui-title"},
     direction = "vertical"
   }
   frame.auto_center = true
@@ -32,7 +32,7 @@ local function build_platform_ui(player)
   if not (platforms and next(platforms)) then
     frame.add{
       type = "label",
-      caption = {"space-platform-org-ui-no-platforms"}
+      caption = {"gui.space-platform-org-ui-no-platforms"}
     }
     return
   end
