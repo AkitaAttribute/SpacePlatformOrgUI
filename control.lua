@@ -1,4 +1,4 @@
--- luacheck: globals script defines log serpent global
+-- luacheck: globals global script defines log serpent
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
@@ -12,7 +12,7 @@ local function ui_state(pi)
   global.spui = global.spui or {}
   local st = global.spui[pi]
   if not st then
-    st = { w = 440, h = 520 }
+    st = { w = 440, h = 528 }
     global.spui[pi] = st
   end
   return st
@@ -105,8 +105,7 @@ local function toggle_platform_ui(player)
   end
 end
 
-script.on_init(function() global.spui = global.spui or {} end)
-script.on_configuration_changed(function() global.spui = global.spui or {} end)
+
 
 script.on_event("space-platform-org-ui-toggle", function(event)
   local player = game.get_player(event.player_index)
@@ -179,4 +178,12 @@ script.on_event(defines.events.on_gui_closed, function(event)
   if element and element.name == UI_NAME then
     element.destroy()
   end
+end)
+
+script.on_init(function()
+  global.spui = global.spui or {}
+end)
+
+script.on_configuration_changed(function()
+  global.spui = global.spui or {}
 end)
