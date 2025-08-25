@@ -32,8 +32,8 @@ local function collect_platform_surfaces()
       log(log_message)
       table.insert(platforms, {
         surface_name = surface_name,
-        caption = caption,
-        platform = ok_platform and platform or nil
+        platform = ok_platform and platform or nil,
+        caption = tostring(caption)
       })
     end
   end
@@ -71,7 +71,6 @@ local function build_platform_ui(player)
     scroll.add{
       type = "button",
       name = BUTTON_PREFIX .. entry.surface_name,
-      -- caption precomputed from platform or surface name
       caption = entry.caption,
       tags = { surface = entry.surface_name }
     }
@@ -105,7 +104,10 @@ script.on_event(defines.events.on_gui_click, function(event)
     if surface_name then
       local surface = game.surfaces[surface_name]
       if surface then
-        pcall(function() player.opened = surface end)
+        local platform = surface.platform
+        if platform then
+          pcall(function() player.opened = platform end)
+        end
         local ui = player.gui.screen[UI_NAME]
         if ui and ui.valid then ui.destroy() end
       end
