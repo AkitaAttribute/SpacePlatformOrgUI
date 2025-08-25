@@ -1,4 +1,4 @@
--- luacheck: globals remote serpent
+-- luacheck: globals remote serpent log
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
@@ -34,50 +34,60 @@ local function print_platform_surfaces(player)
     log(msg)
   end
 
-  local function inspect_table(tbl, prefix, depth)
-    depth = depth or 1
-    if depth > 2 then return end
-    local ok_keys, keys = pcall(function()
-      local ks = {}
-      for k in pairs(tbl) do
-        ks[#ks + 1] = k
-      end
-      return ks
-    end)
-    if not ok_keys then
-      print_log(prefix .. "(unable to iterate table)")
-      return
-    end
-    for _, k in ipairs(keys) do
-      local ok_val, v = pcall(function() return tbl[k] end)
-      local key_str = tostring(k)
-      if not ok_val then
-        print_log(prefix .. key_str .. ": [error reading]")
+  print_log("Surfaces starting with 'platform-':")
+  local found = false
+  for _, surface in pairs(game.surfaces) do
+    -- Safely fetch the surface name and ensure it matches our prefix.
+    local ok_name, surface_name = pcall(function() return surface.name end)
+    if ok_name and type(surface_name) == "string" and surface_name:find("^platform%-") then
+      found = true
+      print_log("  Surface: " .. surface_name)
+
+      -- Print whether the surface is valid.
+      local ok_valid, surface_valid = pcall(function() return surface.valid end)
+      if ok_valid then
+        print_log("    valid: " .. tostring(surface_valid))
       else
-        local t = type(v)
-        if t == "string" or t == "number" or t == "boolean" then
-          local ok_tostr, vstr = pcall(tostring, v)
-          print_log(prefix .. key_str .. ": " .. (ok_tostr and vstr or "[unprintable]"))
-        elseif t == "table" then
-          print_log(prefix .. key_str .. ": [table]")
-          inspect_table(v, prefix .. "  ", depth + 1)
-        elseif t ~= "function" then
-          print_log(prefix .. key_str .. ": [" .. t .. "]")
+        print_log("    valid: [error]")
+      end
+
+      -- If there is a platform associated with the surface, inspect known fields.
+      local ok_platform, platform = pcall(function() return surface.platform end)
+      if ok_platform and platform then
+        print_log("    platform type: " .. type(platform))
+
+        local ok_pname, p_name = pcall(function() return platform.name end)
+        if ok_pname then
+          print_log("      name: " .. tostring(p_name))
+        else
+          print_log("      name: [error]")
         end
+
+        local ok_pindex, p_index = pcall(function() return platform.index end)
+        if ok_pindex then
+          print_log("      index: " .. tostring(p_index))
+        else
+          print_log("      index: [error]")
+        end
+
+        local ok_pvalid, p_valid = pcall(function() return platform.valid end)
+        if ok_pvalid then
+          print_log("      valid: " .. tostring(p_valid))
+        else
+          print_log("      valid: [error]")
+        end
+
+        local ok_force, p_force = pcall(function() return platform.force end)
+        if ok_force and p_force then
+          local ok_force_name, force_name = pcall(function() return p_force.name end)
+          print_log("      force: " .. (ok_force_name and tostring(force_name) or "[error]"))
+        end
+      else
+        print_log("    platform: " .. (ok_platform and "nil" or "[error]"))
       end
     end
   end
 
-  print_log("Surfaces starting with 'platform-':")
-  local found = false
-  for _, surface in pairs(game.surfaces) do
-    local ok_name, surface_name = pcall(function() return surface.name end)
-    if ok_name and type(surface_name) == "string" and surface_name:find("^platform%-") then
-      found = true
-      print_log("  " .. surface_name)
-      inspect_table(surface, "    ", 1)
-    end
-  end
   if not found then
     print_log("  (none)")
   end
