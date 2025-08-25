@@ -4,24 +4,34 @@ local BUTTON_PREFIX = "sp-ui-btn-"
 local function get_space_platforms(force)
   if not (force and force.valid) then return nil end
   local platforms = {}
-  -- Prefer the direct API provided by Space Age if available.
-  if game.space_platforms then
-    for _, platform in pairs(game.space_platforms) do
-      if platform.valid and platform.force == force then
-        platforms[platform.index] = platform
-      end
-    end
-  else
-    -- Fallback for older versions: derive from surfaces.
-    for _, surface in pairs(game.surfaces) do
-      local platform = surface.platform
-      if platform and platform.valid and platform.force == force then
-        platforms[platform.index] = platform
-      end
+  -- Derive platforms by inspecting available surfaces.
+  for _, surface in pairs(game.surfaces) do
+    local ok, platform = pcall(function() return surface.platform end)
+    if ok and platform and platform.valid and platform.force == force then
+      platforms[platform.index] = platform
     end
   end
   if next(platforms) then return platforms end
   return nil
+end
+
+local function print_surface_properties(player)
+  for _, surface in pairs(game.surfaces) do
+    local props = {}
+    -- Try to gather visible properties for debugging purposes.
+    local mt = getmetatable(surface)
+    if mt and mt.__index then
+      for k, _ in pairs(mt.__index) do
+        if type(k) == "string" then
+          local ok, v = pcall(function() return surface[k] end)
+          if ok and type(v) ~= "function" then
+            table.insert(props, k .. "=" .. tostring(v))
+          end
+        end
+      end
+    end
+    player.print("Surface '" .. surface.name .. "' properties: " .. table.concat(props, ", "))
+  end
 end
 
 local function build_platform_ui(player)
@@ -66,6 +76,7 @@ local function toggle_platform_ui(player)
   if existing and existing.valid then
     existing.destroy()
   else
+    print_surface_properties(player)
     build_platform_ui(player)
   end
 end
