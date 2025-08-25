@@ -1,6 +1,24 @@
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
 
+-- Collects all space platforms owned by the given force.
+-- The Space Age expansion exposes platforms as surfaces with
+-- an attached `platform` object. This helper scans through all
+-- game surfaces, gathering any platforms that belong to the
+-- specified force.
+local function get_space_platforms(force)
+  if not (force and force.valid) then return nil end
+  local platforms = {}
+  for _, surface in pairs(game.surfaces) do
+    local platform = surface.platform
+    if platform and platform.valid and platform.force == force then
+      platforms[platform.index] = platform
+    end
+  end
+  if next(platforms) then return platforms end
+  return nil
+end
+
 local function build_platform_ui(player)
   local frame = player.gui.screen.add{
     type = "frame",
@@ -9,6 +27,15 @@ local function build_platform_ui(player)
     direction = "vertical"
   }
   frame.auto_center = true
+
+  local platforms = get_space_platforms(player.force)
+  if not (platforms and next(platforms)) then
+    frame.add{
+      type = "label",
+      caption = {"space-platform-org-ui-no-platforms"}
+    }
+    return
+  end
 
   local scroll = frame.add{
     type = "scroll-pane",
@@ -19,7 +46,6 @@ local function build_platform_ui(player)
   scroll.style.vertically_stretchable = true
   scroll.style.horizontally_stretchable = true
 
-  local platforms = (player.force and player.force.space_platforms) or {}
   for _, platform in pairs(platforms) do
     local caption = platform.backer_name or platform.name or ("Platform " .. (platform.index or _))
     scroll.add{
@@ -53,8 +79,9 @@ script.on_event(defines.events.on_gui_click, function(event)
 
   if string.sub(element.name, 1, #BUTTON_PREFIX) == BUTTON_PREFIX then
     local id = tonumber(string.sub(element.name, #BUTTON_PREFIX + 1))
-    if id and player.force and player.force.space_platforms then
-      local platform = player.force.space_platforms[id]
+    local platforms = get_space_platforms(player.force)
+    if id and platforms then
+      local platform = platforms[id]
       if platform then
         player.opened = platform
         local ui = player.gui.screen[UI_NAME]
