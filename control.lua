@@ -1,4 +1,4 @@
--- luacheck: globals script defines
+-- luacheck: globals script defines log
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
@@ -20,7 +20,7 @@ local function collect_platform_surfaces()
           local ok_force_name, f_name = pcall(function() return p_force.name end)
           if ok_force_name and f_name then force_name = f_name end
         end
-        if ok_pname and p_name then
+        if ok_pname and type(p_name) == "string" and p_name ~= "" then
           caption = p_name
         end
         log_message = log_message .. ", platform.name=" .. tostring(ok_pname and p_name or "nil") ..
@@ -71,7 +71,9 @@ local function build_platform_ui(player)
     scroll.add{
       type = "button",
       name = BUTTON_PREFIX .. entry.surface_name,
-      caption = entry.caption
+      -- caption precomputed from platform or surface name
+      caption = entry.caption,
+      tags = { surface = entry.surface_name }
     }
   end
 end
@@ -98,20 +100,15 @@ script.on_event(defines.events.on_gui_click, function(event)
   if not (element and element.valid and player) then return end
 
   if string.sub(element.name, 1, #BUTTON_PREFIX) == BUTTON_PREFIX then
-    local surface_name = string.sub(element.name, #BUTTON_PREFIX + 1)
-    local platforms = collect_platform_surfaces()
-    local entry
-    for _, data in ipairs(platforms) do
-      if data.surface_name == surface_name then
-        entry = data
-        break
+    local tags = element.tags
+    local surface_name = tags and tags.surface
+    if surface_name then
+      local surface = game.surfaces[surface_name]
+      if surface then
+        pcall(function() player.opened = surface end)
+        local ui = player.gui.screen[UI_NAME]
+        if ui and ui.valid then ui.destroy() end
       end
-    end
-    local platform = entry and entry.platform
-    if platform then
-      pcall(function() player.opened = platform end)
-      local ui = player.gui.screen[UI_NAME]
-      if ui and ui.valid then ui.destroy() end
     end
   end
 end)
