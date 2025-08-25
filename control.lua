@@ -29,22 +29,28 @@ local function print_remote_interfaces(player)
 end
 
 local function print_global_table(player)
-  player.print("Contents of global table:")
+  player.print("Contents of global table (platform/space/surface):")
   local has_entries = false
   for k, v in pairs(global) do
-    has_entries = true
-    local summary
-    if type(v) == "table" then
-      local count = 0
-      for _ in pairs(v) do count = count + 1 end
-      summary = "table with " .. count .. " keys"
-    else
-      summary = tostring(v) .. " (" .. type(v) .. ")"
+    local key = tostring(k)
+    local lower = string.lower(key)
+    if lower:find("platform") or lower:find("space") or lower:find("surface") then
+      has_entries = true
+      local summary
+      if type(v) == "table" then
+        local count = 0
+        for _ in pairs(v) do count = count + 1 end
+        summary = "table with " .. count .. " keys"
+      elseif type(v) == "string" then
+        summary = "string of length " .. #v
+      else
+        summary = tostring(v) .. " (" .. type(v) .. ")"
+      end
+      player.print("  " .. key .. ": " .. summary)
     end
-    player.print("  " .. tostring(k) .. ": " .. summary)
   end
   if not has_entries then
-    player.print("  (empty)")
+    player.print("  (no matching keys)")
   end
 end
 
