@@ -47,7 +47,7 @@ local function build_platform_ui(player)
   scroll.style.horizontally_stretchable = true
 
   for _, platform in pairs(platforms) do
-    local caption = platform.backer_name or platform.name or ("Platform " .. (platform.index or _))
+    local caption = (platform.surface and platform.surface.name) or ("Platform " .. (platform.index or _))
     scroll.add{
       type = "button",
       name = BUTTON_PREFIX .. tostring(platform.index or _),
