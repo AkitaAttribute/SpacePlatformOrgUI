@@ -22,7 +22,10 @@ local function ui_state(pi)
   local g = get_global()
   g.spui = g.spui or {}
   local st = g.spui[pi]
-  if not st then st = { w = 440, h = 528 }; g.spui[pi] = st end
+  if not st then
+    st = { w = 440, h = 528 }
+    g.spui[pi] = st
+  end
   return st
 end
 
