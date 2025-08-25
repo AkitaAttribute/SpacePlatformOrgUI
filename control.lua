@@ -22,6 +22,8 @@ local function build_platform_ui(player)
     direction = "vertical"
   }
   frame.auto_center = true
+  frame.style.minimal_width  = 380
+  frame.style.minimal_height = 420
 
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
@@ -29,54 +31,36 @@ local function build_platform_ui(player)
 
   -- Scroll pane + vertical list container
   local scroll = frame.add{ type = "scroll-pane", name = "platform_scroll" }
-  scroll.style.maximal_height = 400
-  scroll.style.minimal_width  = 260
-  scroll.style.minimal_height = 220
-  scroll.style.vertically_stretchable = true
+  scroll.style.vertically_stretchable   = true
   scroll.style.horizontally_stretchable = true
+  scroll.style.minimal_width  = 360
+  scroll.style.minimal_height = 360
 
   local list = scroll.add{ type = "flow", name = "platform_list", direction = "vertical" }
-  list.style.vertically_stretchable = true
+  list.style.vertically_stretchable   = true
   list.style.horizontally_stretchable = true
-  list.style.minimal_width  = 260
-  list.style.minimal_height = 200
-
-  -- 1) Add an always-visible probe label at the top of the list
-  local probe = list.add{ type = "label", caption = "[Space Platforms]" }
-  probe.style.minimal_width  = 220
-  probe.style.minimal_height = 16
 
   if #entries == 0 then
     list.add{ type = "label", caption = {"gui.space-platforms-org-ui-no-platforms"} }
-    log("UI: list children=" .. tostring(#list.children))
     return
   end
 
-  for i, entry in ipairs(entries) do
-    log("UI: add button #" .. tostring(i) .. " id=" .. tostring(entry.id) .. " caption=" .. tostring(entry.caption))
-    local btn = list.add{
+  for _, entry in ipairs(entries) do
+    local b = list.add{
       type = "button",
       name = BUTTON_PREFIX .. entry.id,
       caption = entry.caption,
       tags = { platform_index = entry.id }
     }
-    if btn and btn.valid then
-      -- Give it some guaranteed footprint so it is visible
-      btn.style.minimal_width  = 220
-      btn.style.minimal_height = 24
-      btn.style.top_padding    = 2
-      btn.style.bottom_padding = 2
-    else
-      log("UI: failed to create button for id=" .. tostring(entry.id))
+    if b and b.valid then
+      b.style.horizontally_stretchable = true
+      b.style.minimal_width  = 260
+      b.style.maximal_width  = 320
+      b.style.minimal_height = 24
+      b.style.top_padding    = 2
+      b.style.bottom_padding = 2
     end
-
-    local lbl = list.add{ type = "label", caption = entry.caption }
-    lbl.style.minimal_width  = 220
-    lbl.style.minimal_height = 16
   end
-  log("UI: list children=" .. tostring(#list.children))
-  log("UI: list child names = " .. table.concat(list.children_names, ","))
-  log("UI: child count (names) = " .. tostring(#list.children_names))
 end
 
 local function toggle_platform_ui(player)
@@ -110,8 +94,17 @@ script.on_event(defines.events.on_gui_click, function(event)
   for _, p in pairs(player.force.platforms or {}) do
     if p and p.valid and p.index == idx then plat = p; break end
   end
-  if plat and plat.valid then
-    pcall(function() player.opened = plat end)
+  local surf = plat and plat.valid and plat.surface
+  if not surf then return end
+
+  -- Try the map view first (preferred), then fall back to zoom_to_world
+  local ok = pcall(function()
+    player.open_map{ position = {0, 0}, surface = surf, scale = 1 }
+  end)
+  if not ok then
+    pcall(function()
+      player.zoom_to_world({0, 0}, 0.5, surf)
+    end)
   end
 end)
 
