@@ -6,15 +6,26 @@ local SIZE_INC   = 40
 local HEADER_DEC = "sp-ui-size-dec"
 local HEADER_INC = "sp-ui-size-inc"
 
+local function ui_state(pi)
+  global.spui = global.spui or {}
+  local st = global.spui[pi]
+  if not st then
+    st = { w = 440, h = 520, platforms = {} }
+    global.spui[pi] = st
+  end
+  return st
+end
+
 local function collect_platforms(force)
-  local entries = {}
-  if not (force and force.valid and force.platforms) then return entries end
+  local entries, platforms = {}, {}
+  if not (force and force.valid and force.platforms) then return entries, platforms end
   for _, p in pairs(force.platforms) do
     if p and p.valid then
-      table.insert(entries, { id = p.index, caption = p.name or ("Platform " .. tostring(p.index)) })
+      entries[#entries + 1] = { id = p.index, caption = p.name or ("Platform " .. tostring(p.index)) }
+      platforms[p.index] = p
     end
   end
-  return entries
+  return entries, platforms
 end
 
 local function build_platform_ui(player)
@@ -25,12 +36,10 @@ local function build_platform_ui(player)
   }
   frame.auto_center = true
 
-  local prefs = global.sp_ui or {}; global.sp_ui = prefs
-  local s = prefs[player.index] or { w = 380, h = 420 }
-  prefs[player.index] = s
+  local st = ui_state(player.index)
 
-  frame.style.minimal_width  = s.w
-  frame.style.minimal_height = s.h
+  frame.style.minimal_width  = st.w
+  frame.style.minimal_height = st.h
 
   local header = frame.add{ type="flow", direction="horizontal", name="sp_header" }
   header.add{ type="label", caption={"gui.space-platforms-org-ui-title"}, style="frame_title" }
@@ -51,15 +60,16 @@ local function build_platform_ui(player)
   }
 
   -- Collect platforms from the force
-  local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
+  local entries, platforms = collect_platforms(player.force)  -- sequential array of {id, caption}
+  st.platforms = platforms
   log("UI: rendering " .. tostring(#entries) .. " platforms")
 
   -- Scroll pane + vertical list container
   local scroll = frame.add{ type = "scroll-pane", name = "platform_scroll" }
   scroll.style.vertically_stretchable   = true
   scroll.style.horizontally_stretchable = true
-  scroll.style.minimal_width  = s.w - 20
-  scroll.style.minimal_height = s.h - 60
+  scroll.style.minimal_width  = st.w - 20
+  scroll.style.minimal_height = st.h - 60
 
   local list = scroll.add{ type = "flow", name = "platform_list", direction = "vertical" }
   list.style.vertically_stretchable   = true
@@ -97,6 +107,9 @@ local function toggle_platform_ui(player)
   end
 end
 
+script.on_init(function() global.spui = global.spui or {} end)
+script.on_configuration_changed(function() global.spui = global.spui or {} end)
+
 script.on_event("space-platform-org-ui-toggle", function(event)
   local player = game.get_player(event.player_index)
   if player then
@@ -108,13 +121,11 @@ script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
+  local st = ui_state(player.index)
 
   if element.name == HEADER_DEC or element.name == HEADER_INC then
-    local prefs = global.sp_ui or {}; global.sp_ui = prefs
-    local s = prefs[player.index] or { w = 380, h = 420 }
     local delta = (element.name == HEADER_INC) and SIZE_INC or -SIZE_INC
-    s.w = math.max(300, math.min(900, s.w + delta))
-    prefs[player.index] = s
+    st.w = math.max(300, math.min(900, st.w + delta))
     local existing = player.gui.screen[UI_NAME]
     if existing and existing.valid then existing.destroy() end
     build_platform_ui(player)
@@ -135,10 +146,7 @@ script.on_event(defines.events.on_gui_click, function(event)
   end
 
   -- Resolve platform
-  local plat
-  for _, p in pairs(player.force.platforms) do
-    if p.index == pid then plat = p; break end
-  end
+  local plat = st.platforms[pid]
   if not (plat and plat.valid) then
     log("UI click: platform not found for id=" .. tostring(pid))
     return
