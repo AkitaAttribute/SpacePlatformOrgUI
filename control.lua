@@ -2,8 +2,11 @@
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
-local HEADER_DEC = "sp-size-w-dec"
-local HEADER_INC = "sp-size-w-inc"
+local HEADER_W_DEC = "sp-size-w-dec"
+local HEADER_W_INC = "sp-size-w-inc"
+local HEADER_H_DEC = "sp-size-h-dec"
+local HEADER_H_INC = "sp-size-h-inc"
+local SIZE_INC = 40
 
 local function ui_state(pi)
   global.spui = global.spui or {}
@@ -20,7 +23,11 @@ local function collect_platforms(force)
   if not (force and force.valid and force.platforms) then return entries end
   for _, p in pairs(force.platforms) do
     if p and p.valid then
-      entries[#entries + 1] = { id = p.index, caption = p.name or ("Platform " .. tostring(p.index)) }
+      entries[#entries + 1] = {
+        id = p.index,
+        caption = p.name or ("Platform " .. p.index),
+        surface_name = p.surface and p.surface.name or nil
+      }
     end
   end
   return entries
@@ -42,10 +49,10 @@ local function build_platform_ui(player)
   local header = frame.add{ type = "flow", direction = "horizontal", name = "sp_header" }
   header.add{ type = "label", caption = {"gui.space-platforms-org-ui-title"}, style = "frame_title" }
   header.add{ type = "empty-widget", style = "draggable_space_header" }.style.horizontally_stretchable = true
-  header.add{ type = "sprite-button", name = HEADER_DEC, sprite = "utility/arrow-left",  style = "frame_action_button", tooltip = "Narrower" }
-  header.add{ type = "sprite-button", name = HEADER_INC, sprite = "utility/arrow-right", style = "frame_action_button", tooltip = "Wider" }
-  header.add{ type = "sprite-button", name = "sp-size-h-dec", sprite = "utility/arrow-down", style = "frame_action_button", tooltip = "Shorter" }
-  header.add{ type = "sprite-button", name = "sp-size-h-inc", sprite = "utility/arrow-up",   style = "frame_action_button", tooltip = "Taller" }
+  header.add{ type = "sprite-button", name = HEADER_W_DEC, sprite = "utility/arrow-left",  style = "frame_action_button", tooltip = "Narrower" }
+  header.add{ type = "sprite-button", name = HEADER_W_INC, sprite = "utility/arrow-right", style = "frame_action_button", tooltip = "Wider" }
+  header.add{ type = "sprite-button", name = HEADER_H_DEC, sprite = "utility/arrow-down", style = "frame_action_button", tooltip = "Shorter" }
+  header.add{ type = "sprite-button", name = HEADER_H_INC, sprite = "utility/arrow-up",   style = "frame_action_button", tooltip = "Taller" }
 
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
@@ -66,12 +73,11 @@ local function build_platform_ui(player)
   end
 
   for _, entry in ipairs(entries) do
-    local idx = entry.platform_index or entry.platform_id or (entry.platform and entry.platform.index) or entry.id
     local b = list.add{
       type = "button",
-      name = BUTTON_PREFIX .. tostring(idx),
-      caption = entry.caption or entry.surface_name,
-      tags = { platform_index = idx }
+      name = BUTTON_PREFIX .. tostring(entry.id),
+      caption = entry.caption,
+      tags = { platform_index = entry.id },
     }
     if b and b.valid then
       b.style.horizontally_stretchable = true
@@ -118,27 +124,26 @@ local function open_platform_view(player, pid)
     end
   end
   if not (plat and plat.valid) then
-    player.print("Platform not found.")
+    log("UI: platform not found id=" .. tostring(pid))
     return
   end
   local surf = plat.surface
   if not (surf and surf.valid) then
-    player.print("Platform surface unavailable.")
+    log("UI: platform surface invalid id=" .. tostring(pid))
     return
   end
   local pos = plat.position or {0,0}
   local safe = surf.find_non_colliding_position("character", pos, 64, 1) or pos
-  local ok = pcall(function()
+  pcall(function()
     player.set_controller{
       type = defines.controllers.remote,
       surface = surf,
       position = safe,
       start_zoom = 0.7,
     }
+    player.zoom_to_world(safe, 0.8, surf)
   end)
-  if not ok then
-    pcall(function() player.zoom_to_world(safe, 0.5, surf) end)
-  end
+  log("UI: opened platform id=" .. pid .. " surface=" .. surf.name)
 end
 
 script.on_event(defines.events.on_gui_click, function(event)
@@ -147,23 +152,31 @@ script.on_event(defines.events.on_gui_click, function(event)
   if not (element and element.valid and player) then return end
   local st = ui_state(player.index)
 
-  if element.name == HEADER_DEC then st.w = math.max(320, (st.w or 440) - 40); rebuild_ui(player); return end
-  if element.name == HEADER_INC then st.w = (st.w or 440) + 40; rebuild_ui(player); return end
-  if element.name == "sp-size-h-dec" then st.h = math.max(320, (st.h or 520) - 40); rebuild_ui(player); return end
-  if element.name == "sp-size-h-inc" then st.h = (st.h or 520) + 40; rebuild_ui(player); return end
-
-  if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
-
-  local pid = element.tags and element.tags.platform_index
-  if not pid then
-    pid = tonumber(element.name:sub(#BUTTON_PREFIX + 1))
+  local delta_w, delta_h
+  if element.name == HEADER_W_DEC or element.name == HEADER_W_INC then
+    delta_w = (element.name == HEADER_W_DEC) and -SIZE_INC or SIZE_INC
+  elseif element.name == HEADER_H_DEC or element.name == HEADER_H_INC then
+    delta_h = (element.name == HEADER_H_DEC) and -SIZE_INC or SIZE_INC
+  else
+    -- platform click logic below
+    if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
+    local pid = element.tags and element.tags.platform_index
+        or tonumber(element.name:sub(#BUTTON_PREFIX + 1))
+    if not pid then return end
+    open_platform_view(player, pid)
+    return
   end
-  if pid then open_platform_view(player, pid); return end
+
+  st.w = math.max(320, math.min(900, st.w + (delta_w or 0)))
+  st.h = math.max(240, math.min(900, st.h + (delta_h or 0)))
+  local prefs = global.spui
+  prefs[player.index] = st
+  rebuild_ui(player)
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
   local element = event.element
-  if element and element.valid and element.name == UI_NAME then
+  if element and element.name == UI_NAME then
     element.destroy()
   end
 end)
