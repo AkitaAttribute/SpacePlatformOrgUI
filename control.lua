@@ -43,6 +43,25 @@ local function collect_platforms(force)
   return entries
 end
 
+local function safe_sprite_button(parent, name, sprite, tooltip)
+  local ok, elem = pcall(function()
+    return parent.add{
+      type   = "sprite-button",
+      name   = name,
+      sprite = sprite,
+      style  = "frame_action_button",
+      tooltip = tooltip
+    }
+  end)
+  if ok and elem then return elem end
+  -- Fallback so missing sprites never crash the mod
+  return parent.add{
+    type = "button",
+    name = name,
+    caption = tooltip or name
+  }
+end
+
 local function build_platform_ui(player)
   local frame = player.gui.screen.add{
     type = "frame",
@@ -58,12 +77,11 @@ local function build_platform_ui(player)
 
   local header = frame.add{ type = "flow", direction = "horizontal", name = "sp_header" }
   header.add{ type = "label", caption = {"gui.space-platforms-org-ui-title"}, style = "frame_title" }
-  header.add{ type = "empty-widget", style = "draggable_space_header" }.style.horizontally_stretchable = true
-  header.add{ type = "sprite-button", name = HEADER_W_DEC, sprite = "utility/arrow-left",  style = "frame_action_button", tooltip = "Narrower" }
-  header.add{ type = "sprite-button", name = HEADER_W_INC, sprite = "utility/arrow-right", style = "frame_action_button", tooltip = "Wider" }
-  header.add{ type = "sprite-button", name = HEADER_H_DEC, sprite = "utility/arrow-down", style = "frame_action_button", tooltip = "Shorter" }
-  header.add{ type = "sprite-button", name = HEADER_H_INC, sprite = "utility/arrow-up",   style = "frame_action_button", tooltip = "Taller" }
-
+  header.add{ type = "empty-widget", name = "drag_handle", style = "draggable_space_header" }.style.horizontally_stretchable = true
+  safe_sprite_button(header, HEADER_W_DEC, "utility/left_arrow",  {"narrower"})
+  safe_sprite_button(header, HEADER_W_INC, "utility/right_arrow", {"wider"})
+  safe_sprite_button(header, HEADER_H_DEC, "utility/down_arrow",  {"shorter"})
+  safe_sprite_button(header, HEADER_H_INC, "utility/up_arrow",    {"taller"})
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
   log("UI: rendering " .. tostring(#entries) .. " platforms")
