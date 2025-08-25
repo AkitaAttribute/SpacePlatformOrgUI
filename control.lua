@@ -7,23 +7,24 @@ local HEADER_W_INC = "sp-size-w-inc"
 local HEADER_H_DEC = "sp-size-h-dec"
 local HEADER_H_INC = "sp-size-h-inc"
 local SIZE_INC = 40
-log("[sp-ui] global type: " .. tostring(type(global)))
+
+-- Return the engine 'global' table safely, creating it if needed.
+local function get_global()
+  local g = rawget(_G, "global")
+  if type(g) ~= "table" then
+    g = {}
+    rawset(_G, "global", g)
+  end
+  return g
+end
 
 local function ui_state(pi)
-  -- Always use the engine-provided global; protect against accidental shadowing
-  local G = rawget(_G, "global")
-  if not G then
-    -- Recover from shadowing: reattach a table so we don't crash
-    G = {}
-    _G.global = G
-    log("[sp-ui] WARNING: 'global' was nil; recreated temporary table.")
-  end
-
-  G.spui = G.spui or {}
-  local st = G.spui[pi]
+  local g = get_global()
+  g.spui = g.spui or {}
+  local st = g.spui[pi]
   if not st then
     st = { w = 440, h = 528 }
-    G.spui[pi] = st
+    g.spui[pi] = st
   end
   return st
 end
@@ -224,8 +225,8 @@ script.on_event(defines.events.on_gui_click, function(event)
 
   st.w = math.max(320, math.min(900, st.w + (delta_w or 0)))
   st.h = math.max(240, math.min(900, st.h + (delta_h or 0)))
-  local prefs = global.spui
-  prefs[player.index] = st
+  local g = get_global()
+  g.spui[player.index] = st
   local frame = player.gui.screen[UI_NAME]
   if frame and frame.valid then
     frame.style.minimal_width  = st.w
@@ -248,11 +249,13 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
 end)
 
 script.on_init(function()
-  global.spui = global.spui or {}
+  local g = get_global()
+  g.spui = g.spui or {}
 end)
 
 script.on_configuration_changed(function()
-  global.spui = global.spui or {}
+  local g = get_global()
+  g.spui = g.spui or {}
 end)
 
 local function rebuild_all_open()
