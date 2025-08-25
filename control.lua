@@ -1,4 +1,4 @@
--- luacheck: globals remote
+-- luacheck: globals remote global
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
@@ -25,6 +25,32 @@ local function print_remote_interfaces(player)
         player.print("  " .. func_name)
       end
     end
+  end
+end
+
+local function print_global_table(player)
+  player.print("Contents of global table (platform/space/surface):")
+  local has_entries = false
+  for k, v in pairs(global) do
+    local key = tostring(k)
+    local lower = string.lower(key)
+    if lower:find("platform") or lower:find("space") or lower:find("surface") then
+      has_entries = true
+      local summary
+      if type(v) == "table" then
+        local count = 0
+        for _ in pairs(v) do count = count + 1 end
+        summary = "table with " .. count .. " keys"
+      elseif type(v) == "string" then
+        summary = "string of length " .. #v
+      else
+        summary = tostring(v) .. " (" .. type(v) .. ")"
+      end
+      player.print("  " .. key .. ": " .. summary)
+    end
+  end
+  if not has_entries then
+    player.print("  (no matching keys)")
   end
 end
 
@@ -71,6 +97,7 @@ local function toggle_platform_ui(player)
     existing.destroy()
   else
     print_remote_interfaces(player)
+    print_global_table(player)
     build_platform_ui(player)
   end
 end
