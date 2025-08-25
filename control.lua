@@ -7,13 +7,23 @@ local HEADER_W_INC = "sp-size-w-inc"
 local HEADER_H_DEC = "sp-size-h-dec"
 local HEADER_H_INC = "sp-size-h-inc"
 local SIZE_INC = 40
+log("[sp-ui] global type: " .. tostring(type(global)))
 
 local function ui_state(pi)
-  global.spui = global.spui or {}
-  local st = global.spui[pi]
+  -- Always use the engine-provided global; protect against accidental shadowing
+  local G = rawget(_G, "global")
+  if not G then
+    -- Recover from shadowing: reattach a table so we don't crash
+    G = {}
+    _G.global = G
+    log("[sp-ui] WARNING: 'global' was nil; recreated temporary table.")
+  end
+
+  G.spui = G.spui or {}
+  local st = G.spui[pi]
   if not st then
     st = { w = 440, h = 528 }
-    global.spui[pi] = st
+    G.spui[pi] = st
   end
   return st
 end
