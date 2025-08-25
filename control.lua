@@ -35,6 +35,8 @@ local function build_platform_ui(player)
   scroll.style.horizontally_stretchable = true
 
   local list = scroll.add{ type = "flow", name = "platform_list", direction = "vertical" }
+  list.style.vertically_stretchable = true
+  list.style.horizontally_stretchable = true
 
   if #entries == 0 then
     list.add{ type = "label", caption = {"gui.space-platforms-org-ui-no-platforms"} }
@@ -52,14 +54,17 @@ local function build_platform_ui(player)
     }
     if btn and btn.valid then
       -- Give it some guaranteed footprint so it is visible
-      btn.style.minimal_width = 200
-      btn.style.top_padding = 2
+      btn.style.minimal_width  = 220
+      btn.style.minimal_height = 24
+      btn.style.top_padding    = 2
       btn.style.bottom_padding = 2
     else
       log("UI: failed to create button for id=" .. tostring(entry.id))
     end
   end
   log("UI: list children=" .. tostring(#list.children))
+  log("UI: list child names = " .. table.concat(list.children_names, ","))
+  log("UI: child count (names) = " .. tostring(#list.children_names))
 end
 
 local function toggle_platform_ui(player)
