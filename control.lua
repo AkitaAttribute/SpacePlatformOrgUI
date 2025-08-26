@@ -161,6 +161,7 @@ local function build_platform_ui(player)
   if #entries == 0 then
     list.add{ type = "label", caption = {"gui.space-platforms-org-ui-no-platforms"} }
     apply_platform_button_size(player)
+    apply_ui_state(player)
     return
   end
 
@@ -252,19 +253,20 @@ script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
-  local delta_w, delta_h
-  if element.name == "sp-size-w-dec" then
-      nudge_platform_dims(player, -2, 0)
-      return
-  elseif element.name == "sp-size-w-inc" then
-      nudge_platform_dims(player, 2, 0)
-      return
-  elseif element.name == "sp-size-h-dec" then
-      nudge_platform_dims(player, 0, -2)
-      return
-  elseif element.name == "sp-size-h-inc" then
-      nudge_platform_dims(player, 0, 2)
-      return
+  if element.name == "sp-size-w-dec" or element.name == "sp-size-w-inc" then
+    if element.name == "sp-size-w-dec" then
+      nudge_platform_dims(player, -10, 0)
+    else
+      nudge_platform_dims(player, 10, 0)
+    end
+    return
+  elseif element.name == "sp-size-h-dec" or element.name == "sp-size-h-inc" then
+    if element.name == "sp-size-h-dec" then
+      nudge_platform_dims(player, 0, -4)
+    else
+      nudge_platform_dims(player, 0, 4)
+    end
+    return
   end
   -- platform click logic below
   if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
