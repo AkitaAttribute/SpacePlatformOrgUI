@@ -222,11 +222,7 @@ local function build_platform_ui(player)
       b.style.top_padding    = 2
       b.style.bottom_padding = 2
       if i % 2 == 0 then
-        local gs = { base = { position = {0, 0}, corner_size = 8, tint = tan } }
-        b.style.default_graphical_set  = gs
-        b.style.hovered_graphical_set  = gs
-        b.style.clicked_graphical_set  = gs
-        b.style.disabled_graphical_set = gs
+        b.style.color = tan
       end
     end
   end
