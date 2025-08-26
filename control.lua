@@ -93,27 +93,6 @@ local function collect_platforms(force)
   end
   return entries
 end
-
-local function safe_sprite_button(parent, name, sprite, tooltip)
-  local ok, elem = pcall(function()
-    return parent.add{
-      type   = "sprite-button",
-      name   = name,
-      sprite = sprite,
-      style  = "frame_action_button",
-      tooltip = tooltip,
-      -- Do NOT set caption for sprite-button
-    }
-  end)
-  if ok and elem then return elem end
-  -- Fallback so missing sprites never crash the mod
-  return parent.add{
-    type = "button",
-    name = name,
-    caption = tooltip or name
-  }
-end
-
 local function build_platform_ui(player)
   local frame = player.gui.screen.add{
     type = "frame",
