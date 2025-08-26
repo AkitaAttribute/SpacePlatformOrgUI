@@ -120,7 +120,6 @@ end
 
 local function add_size_btn(parent, name, caption)
   local b = parent.add{ type = "button", name = name, caption = caption, style = "tool_button" }
-  -- prevent caption collapsing to "…"
   b.style.minimal_width = 36
   b.style.maximal_width = 36
   return b
@@ -196,7 +195,8 @@ local function build_platform_ui(player)
   local g = get_global()
   g.ui = g.ui or {}
   g.ui[player.index] = g.ui[player.index] or {}
-  g.ui[player.index].platform_list = list
+  local ui = g.ui[player.index]
+  ui.platform_list = list
 
   if #entries == 0 then
     list.add{ type = "label", caption = {"gui.space-platforms-org-ui-no-platforms"} }
@@ -296,19 +296,26 @@ script.on_event(defines.events.on_gui_click, function(event)
 
   if name == BTN_W_DEC then
     nudge_platform_dims(player, -10, 0)
+    return
   elseif name == BTN_W_INC then
     nudge_platform_dims(player,  10, 0)
+    return
   elseif name == BTN_H_DEC then
     nudge_platform_dims(player, 0, -4)
+    return
   elseif name == BTN_H_INC then
     nudge_platform_dims(player, 0,  4)
+    return
+  elseif name == HEADER_H_INC then
+    nudge_platform_dims(player, 0, 4)
+    return
   end
 
   local delta_w, delta_h
   if name == HEADER_W_DEC or name == HEADER_W_INC then
     delta_w = (name == HEADER_W_DEC) and -SIZE_INC or SIZE_INC
-  elseif name == HEADER_H_DEC or name == HEADER_H_INC then
-    delta_h = (name == HEADER_H_DEC) and -SIZE_INC or SIZE_INC
+  elseif name == HEADER_H_DEC then
+    delta_h = -SIZE_INC
   else
     if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
     local pid = element.tags and element.tags.platform_index
