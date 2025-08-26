@@ -270,40 +270,36 @@ script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
-  local st = ui_state(player.index)
 
+  -- compute resize deltas from our +W/-W/+H/-H buttons
   local delta_w, delta_h
-  local name = element.name
-  if     name == BTN_W_DEC then
-    delta_w = -SIZE_INC
-  elseif name == BTN_W_INC then
+  if     element.name == BTN_W_INC then
     delta_w =  SIZE_INC
-  elseif name == BTN_H_DEC then
-    delta_h = -SIZE_INC
-  elseif name == BTN_H_INC then
+  elseif element.name == BTN_W_DEC then
+    delta_w = -SIZE_INC
+  elseif element.name == BTN_H_INC then
     delta_h =  SIZE_INC
-  else
-    -- fall through to platform-button logic below
+  elseif element.name == BTN_H_DEC then
+    delta_h = -SIZE_INC
   end
 
-  if not (delta_w or delta_h) then
-    if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
-    local pid = element.tags and element.tags.platform_index
-        or tonumber(name:sub(#BUTTON_PREFIX + 1))
-    if not pid then return end
-    open_platform_view(player, pid)
+  -- if a resize button was clicked, apply and return
+  if delta_w or delta_h then
+    local st = ui_state(player.index)
+    st.w = math.max(320, math.min(900, st.w + (delta_w or 0)))
+    st.h = math.max(240, math.min(900, st.h + (delta_h or 0)))
+    rebuild_ui(player, true)  -- keep position/scroll
     return
   end
 
-  st.w = math.max(320, math.min(900, st.w + (delta_w or 0)))
-  st.h = math.max(240, math.min(900, st.h + (delta_h or 0)))
-  local g = get_global()
-  g.spui[player.index] = st
-  local frame = player.gui.screen[UI_NAME]
-  if frame and frame.valid then
-    frame.style.minimal_width  = st.w
-    frame.style.minimal_height = st.h
-  end
+  -- platform click logic below
+  local name = element.name
+  if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
+  local pid = element.tags and element.tags.platform_index
+      or tonumber(name:sub(#BUTTON_PREFIX + 1))
+  if not pid then return end
+  open_platform_view(player, pid)
+  return
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
