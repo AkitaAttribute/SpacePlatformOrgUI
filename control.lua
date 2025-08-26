@@ -3,7 +3,7 @@
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
 
--- Kept for potential future use; current implementation uses explicit names.
+-- Header (window-size) button ids
 local HEADER_W_DEC = "sp-size-w-dec"
 local HEADER_W_INC = "sp-size-w-inc"
 local HEADER_H_DEC = "sp-size-h-dec"
@@ -24,6 +24,7 @@ local function ui_state(pi)
   g.spui = g.spui or {}
   local st = g.spui[pi]
   if not st then
+    -- w/h = window size; button_w/h = list row size (kept for future use)
     st = { w = 440, h = 528, loc = nil, scroll = 0, button_w = 260, button_h = 24 }
     g.spui[pi] = st
   end
@@ -81,13 +82,12 @@ local function apply_ui_state(player)
 end
 
 -- Apply the configured width/height to all platform entry buttons in-place.
+-- (Kept for future row-size controls; not bound to header buttons.)
 local function apply_platform_button_size(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
 
   local st = ui_state(player.index)
-
-  -- Locate the list safely via known hierarchy.
   local scroll = frame["platform_scroll"]
   local list = (scroll and scroll.valid) and scroll["platform_list"] or nil
   if not (list and list.valid) then return end
@@ -103,11 +103,25 @@ local function apply_platform_button_size(player)
 end
 
 -- Adjust stored row width/height and re-apply without rebuilding the UI.
+-- (Unbound to header buttons; available if you add row-size controls later.)
 local function nudge_platform_dims(player, dw, dh)
   local st = ui_state(player.index)
   st.button_w = math.max(100, math.min(600, st.button_w + (dw or 0)))
   st.button_h = math.max(20,  math.min(60,  st.button_h + (dh or 0)))
   apply_platform_button_size(player)
+end
+
+-- NEW: Adjust the WINDOW (frame) size in place; used by -W/+W/-H/+H.
+local function nudge_window_dims(player, dw, dh)
+  local st = ui_state(player.index)
+  st.w = math.max(360, math.min(1400, st.w + (dw or 0)))
+  st.h = math.max(320, math.min(1400, st.h + (dh or 0)))
+
+  local frame = player.gui.screen[UI_NAME]
+  if frame and frame.valid then
+    frame.style.minimal_width  = st.w
+    frame.style.minimal_height = st.h
+  end
 end
 
 local function collect_platforms(force)
@@ -134,16 +148,10 @@ local function safe_sprite_button(parent, name, sprite, tooltip)
       sprite = sprite,
       style  = "frame_action_button",
       tooltip = tooltip,
-      -- Do NOT set caption for sprite-button
     }
   end)
   if ok and elem then return elem end
-  -- Fallback so missing sprites never crash the mod
-  return parent.add{
-    type = "button",
-    name = name,
-    caption = tooltip or name
-  }
+  return parent.add{ type = "button", name = name, caption = tooltip or name }
 end
 
 local function build_platform_ui(player)
@@ -168,9 +176,9 @@ local function build_platform_ui(player)
   local drag = titlebar.add{ type = "empty-widget", name = "drag_handle", style = "draggable_space_header" }
   drag.style.horizontally_stretchable = true
   drag.style.height = 24
-  drag.drag_target = frame   -- IMPORTANT: makes the whole frame draggable
+  drag.drag_target = frame
 
-  -- Row 2: left-aligned resize controls
+  -- Row 2: left-aligned window size controls
   local controls = header.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
   controls.style.horizontal_spacing = 2
   controls.add{ type = "button", name = HEADER_W_DEC, caption = "-W", style = "tool_button", maximal_width = 36, minimal_width = 36 }
@@ -179,8 +187,7 @@ local function build_platform_ui(player)
   controls.add{ type = "button", name = HEADER_H_INC, caption = "+H", style = "tool_button", maximal_width = 36, minimal_width = 36 }
 
   -- Collect platforms from the force
-  local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
-  log("UI: rendering " .. tostring(#entries) .. " platforms")
+  local entries = collect_platforms(player.force)
 
   -- Scroll pane + vertical list container
   local scroll = frame.add{ type = "scroll-pane", name = "platform_scroll" }
@@ -206,6 +213,7 @@ local function build_platform_ui(player)
     }
     if b and b.valid then
       b.style.horizontally_stretchable = true
+      -- keep fixed row size defaults; change via dedicated row-size controls if needed
       b.style.minimal_width  = st.button_w
       b.style.maximal_width  = st.button_w
       b.style.minimal_height = st.button_h
@@ -215,7 +223,7 @@ local function build_platform_ui(player)
     end
   end
 
-  -- Ensure sizes are applied even on first open.
+  -- Ensure sizes and placement are applied on first open.
   apply_platform_button_size(player)
   apply_ui_state(player)
 end
@@ -265,7 +273,6 @@ local function open_platform_view(player, pid)
     log("UI: platform surface invalid id=" .. tostring(pid))
     return
   end
-  -- Resolve a safe position without touching plat.position (it doesn't exist)
   local pos = {x = 0, y = 0}
   local safe = surf.find_non_colliding_position("character", pos, 64, 1) or pos
   pcall(function()
@@ -287,18 +294,18 @@ script.on_event(defines.events.on_gui_click, function(event)
 
   local name = element.name
 
-  -- Size controls: mutate in place; do not rebuild UI.
+  -- Header controls resize the WINDOW (frame), not the list rows.
   if name == HEADER_W_DEC then
-    nudge_platform_dims(player, -2, 0)
+    nudge_window_dims(player, -20, 0)
     return
   elseif name == HEADER_W_INC then
-    nudge_platform_dims(player,  2, 0)
+    nudge_window_dims(player,  20, 0)
     return
   elseif name == HEADER_H_DEC then
-    nudge_platform_dims(player, 0, -2)
+    nudge_window_dims(player, 0, -20)
     return
   elseif name == HEADER_H_INC then
-    nudge_platform_dims(player, 0,  2)
+    nudge_window_dims(player, 0,  20)
     return
   end
 
