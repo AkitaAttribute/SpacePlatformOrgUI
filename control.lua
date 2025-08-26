@@ -271,12 +271,14 @@ script.on_event(defines.events.on_gui_click, function(event)
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
 
+  local name = element.name
+
   -- compute resize deltas from +W/-W/+H/-H buttons
   local delta_w, delta_h
-  if     element.name == BTN_W_INC then delta_w =  SIZE_INC
-  elseif element.name == BTN_W_DEC then delta_w = -SIZE_INC
-  elseif element.name == BTN_H_INC then delta_h =  SIZE_INC
-  elseif element.name == BTN_H_DEC then delta_h = -SIZE_INC
+  if     name == BTN_W_INC then delta_w =  SIZE_INC
+  elseif name == BTN_W_DEC then delta_w = -SIZE_INC
+  elseif name == BTN_H_INC then delta_h =  SIZE_INC
+  elseif name == BTN_H_DEC then delta_h = -SIZE_INC
   end
 
   -- apply resize and stop here
@@ -289,7 +291,6 @@ script.on_event(defines.events.on_gui_click, function(event)
   end
 
   -- platform click logic below
-  local name = element.name
   if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
   local pid = element.tags and element.tags.platform_index
       or tonumber(name:sub(#BUTTON_PREFIX + 1))
