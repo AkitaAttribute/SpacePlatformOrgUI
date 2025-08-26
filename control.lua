@@ -271,22 +271,25 @@ script.on_event(defines.events.on_gui_click, function(event)
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
 
-  local name = element.name
-
   -- compute resize deltas from +W/-W/+H/-H buttons
-  local delta_w, delta_h
-  if     name == BTN_W_INC then delta_w =  SIZE_INC
-  elseif name == BTN_W_DEC then delta_w = -SIZE_INC
-  elseif name == BTN_H_INC then delta_h =  SIZE_INC
-  elseif name == BTN_H_DEC then delta_h = -SIZE_INC
+  local name = element.name
+  local delta_w, delta_h = 0, 0
+  if name == BTN_W_INC then
+    delta_w = SIZE_INC
+  elseif name == BTN_W_DEC then
+    delta_w = -SIZE_INC
+  elseif name == BTN_H_INC then
+    delta_h = SIZE_INC
+  elseif name == BTN_H_DEC then
+    delta_h = -SIZE_INC
   end
 
   -- apply resize and stop here
-  if delta_w or delta_h then
+  if delta_w ~= 0 or delta_h ~= 0 then
     local st = ui_state(player.index)
-    st.w = math.max(320, math.min(900, st.w + (delta_w or 0)))
-    st.h = math.max(240, math.min(900, st.h + (delta_h or 0)))
-    rebuild_ui(player, true)  -- keep position/scroll
+    st.w = math.max(320, math.min(900, (st.w or 440) + delta_w))
+    st.h = math.max(240, math.min(900, (st.h or 528) + delta_h))
+    rebuild_ui(player, true)  -- keep position/scroll/location
     return
   end
 
