@@ -177,19 +177,24 @@ local function build_platform_ui(player)
   drag.style.height = 24
   drag.drag_target = frame
 
-  -- Row 2: left-aligned WINDOW size controls (colored)
+  -- Row 2: left-aligned WINDOW size controls (custom colored tool buttons)
   local controls = header.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
   controls.style.horizontal_spacing = 2
 
-  local b
-  b = controls.add{ type = "button", name = HEADER_W_DEC, caption = "-W", style = "red_button" }
-  b.style.minimal_width = 36; b.style.maximal_width = 36
-  b = controls.add{ type = "button", name = HEADER_W_INC, caption = "+W", style = "confirm_button" }
-  b.style.minimal_width = 36; b.style.maximal_width = 36
-  b = controls.add{ type = "button", name = HEADER_H_DEC, caption = "-H", style = "red_button" }
-  b.style.minimal_width = 36; b.style.maximal_width = 36
-  b = controls.add{ type = "button", name = HEADER_H_INC, caption = "+H", style = "confirm_button" }
-  b.style.minimal_width = 36; b.style.maximal_width = 36
+  local function add_hdr_btn(name, caption, style)
+    local b = controls.add{ type = "button", name = name, caption = caption, style = style }
+    -- Force consistent size to avoid height mismatch across styles
+    b.style.minimal_width  = 44
+    b.style.maximal_width  = 44
+    b.style.minimal_height = 24
+    b.style.maximal_height = 24
+    return b
+  end
+
+  add_hdr_btn(HEADER_W_DEC, "-W", "sp_tool_button_red")
+  add_hdr_btn(HEADER_W_INC, "+W", "sp_tool_button_green")
+  add_hdr_btn(HEADER_H_DEC, "-H", "sp_tool_button_red")
+  add_hdr_btn(HEADER_H_INC, "+H", "sp_tool_button_green")
 
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)

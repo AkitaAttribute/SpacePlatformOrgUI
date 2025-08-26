@@ -1,6 +1,6 @@
 -- data.lua
 
--- Existing custom input (unchanged)
+-- Existing custom input
 data:extend({
   {
     type = "custom-input",
@@ -10,23 +10,51 @@ data:extend({
   }
 })
 
--- GUI styles: define a tan variant for alternating list-row buttons.
--- Background color must be provided by a style at data stage.
+-- ===== Styles =====
 local styles = data.raw["gui-style"].default
 
+-- Tiny helpers for color work
+local function hex_to_tint(hex) -- "#RRGGBB"
+  local r = tonumber(hex:sub(2, 3), 16) / 255
+  local g = tonumber(hex:sub(4, 5), 16) / 255
+  local b = tonumber(hex:sub(6, 7), 16) / 255
+  return { r = r, g = g, b = b, a = 1.0 }
+end
+local function scale(c, f)
+  local function s(x) return math.min(1, math.max(0, x * f)) end
+  return { r = s(c.r), g = s(c.g), b = s(c.b), a = 1.0 }
+end
+
+-- Colors (from your request)
+local TAN   = hex_to_tint("#D2B48C")
+local GREEN = hex_to_tint("#00ab66")
+local RED   = hex_to_tint("#cf142b")
+
+-- Alternating list-row button: tan background
 styles["sp_list_button_tan"] = {
   type = "button_style",
   parent = "button",
-  default_graphical_set = {
-    base = { position = {0, 0}, corner_size = 8, tint = {r = 0.88, g = 0.80, b = 0.62, a = 1.0} }
-  },
-  hovered_graphical_set = {
-    base = { position = {0, 0}, corner_size = 8, tint = {r = 0.92, g = 0.84, b = 0.66, a = 1.0} }
-  },
-  clicked_graphical_set = {
-    base = { position = {0, 0}, corner_size = 8, tint = {r = 0.84, g = 0.76, b = 0.58, a = 1.0} }
-  },
-  disabled_graphical_set = {
-    base = { position = {0, 0}, corner_size = 8, tint = {r = 0.78, g = 0.72, b = 0.56, a = 1.0} }
-  }
+  default_graphical_set  = { base = { position = {0, 0}, corner_size = 8, tint = TAN } },
+  hovered_graphical_set  = { base = { position = {0, 0}, corner_size = 8, tint = scale(TAN, 1.08) } },
+  clicked_graphical_set  = { base = { position = {0, 0}, corner_size = 8, tint = scale(TAN, 0.92) } },
+  disabled_graphical_set = { base = { position = {0, 0}, corner_size = 8, tint = scale(TAN, 0.85) } },
+}
+
+-- Compact, text-friendly colored tool buttons for header +/- controls
+styles["sp_tool_button_green"] = {
+  type = "button_style",
+  parent = "tool_button",
+  default_graphical_set  = { base = { position = {0, 0}, corner_size = 8, tint = GREEN } },
+  hovered_graphical_set  = { base = { position = {0, 0}, corner_size = 8, tint = scale(GREEN, 1.10) } },
+  clicked_graphical_set  = { base = { position = {0, 0}, corner_size = 8, tint = scale(GREEN, 0.92) } },
+  disabled_graphical_set = { base = { position = {0, 0}, corner_size = 8, tint = scale(GREEN, 0.75) } },
+}
+
+styles["sp_tool_button_red"] = {
+  type = "button_style",
+  parent = "tool_button",
+  default_graphical_set  = { base = { position = {0, 0}, corner_size = 8, tint = RED } },
+  hovered_graphical_set  = { base = { position = {0, 0}, corner_size = 8, tint = scale(RED, 1.10) } },
+  clicked_graphical_set  = { base = { position = {0, 0}, corner_size = 8, tint = scale(RED, 0.92) } },
+  disabled_graphical_set = { base = { position = {0, 0}, corner_size = 8, tint = scale(RED, 0.75) } },
 }
