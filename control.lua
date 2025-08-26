@@ -2,10 +2,10 @@
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
-local HEADER_W_DEC = "sp-size-w-dec"
-local HEADER_W_INC = "sp-size-w-inc"
-local HEADER_H_DEC = "sp-size-h-dec"
-local HEADER_H_INC = "sp-size-h-inc"
+local BTN_W_INC = "sp-size-w-inc"
+local BTN_W_DEC = "sp-size-w-dec"
+local BTN_H_INC = "sp-size-h-inc"
+local BTN_H_DEC = "sp-size-h-dec"
 local SIZE_INC = 40
 
 -- Return the engine 'global' table safely, creating it if needed.
@@ -140,10 +140,34 @@ local function build_platform_ui(player)
   -- Row 2: left-aligned resize controls
   local controls = header.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
   controls.style.horizontal_spacing = 2
-  safe_sprite_button(controls, HEADER_W_DEC, "utility/left_arrow",  "Narrower")
-  safe_sprite_button(controls, HEADER_W_INC, "utility/right_arrow", "Wider")
-  safe_sprite_button(controls, HEADER_H_DEC, "utility/down_arrow",  "Shorter")
-  safe_sprite_button(controls, HEADER_H_INC, "utility/up_arrow",    {"", "Taller"})
+  controls.add{
+    type = "button",
+    name = BTN_W_INC,
+    caption = "+W",
+    style = "frame_action_button",
+    tooltip = "+Width",
+  }
+  controls.add{
+    type = "button",
+    name = BTN_W_DEC,
+    caption = "-W",
+    style = "frame_action_button",
+    tooltip = "-Width",
+  }
+  controls.add{
+    type = "button",
+    name = BTN_H_INC,
+    caption = "+H",
+    style = "frame_action_button",
+    tooltip = "+Height",
+  }
+  controls.add{
+    type = "button",
+    name = BTN_H_DEC,
+    caption = "-H",
+    style = "frame_action_button",
+    tooltip = "-Height",
+  }
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
   log("UI: rendering " .. tostring(#entries) .. " platforms")
@@ -251,10 +275,10 @@ script.on_event(defines.events.on_gui_click, function(event)
   local st = ui_state(player.index)
 
   local delta_w, delta_h
-  if element.name == HEADER_W_DEC or element.name == HEADER_W_INC then
-    delta_w = (element.name == HEADER_W_DEC) and -SIZE_INC or SIZE_INC
-  elseif element.name == HEADER_H_DEC or element.name == HEADER_H_INC then
-    delta_h = (element.name == HEADER_H_DEC) and -SIZE_INC or SIZE_INC
+  if element.name == BTN_W_DEC or element.name == BTN_W_INC then
+    delta_w = (element.name == BTN_W_DEC) and -SIZE_INC or SIZE_INC
+  elseif element.name == BTN_H_DEC or element.name == BTN_H_INC then
+    delta_h = (element.name == BTN_H_DEC) and -SIZE_INC or SIZE_INC
   else
     -- platform click logic below
     if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
