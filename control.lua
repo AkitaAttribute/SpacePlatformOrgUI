@@ -161,10 +161,8 @@ local function build_platform_ui(player)
   if #entries == 0 then
     list.add{ type = "label", caption = {"gui.space-platforms-org-ui-no-platforms"} }
     apply_platform_button_size(player)
-    apply_ui_state(player)
     return
   end
-  apply_ui_state(player)
 
   for _, entry in ipairs(entries) do
     local b = list.add{
