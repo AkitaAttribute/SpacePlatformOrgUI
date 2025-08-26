@@ -183,9 +183,9 @@ local function build_platform_ui(player)
 
   local function add_hdr_btn(name, caption, style)
     local b = controls.add{ type = "button", name = name, caption = caption, style = style }
-    -- Force consistent size to avoid height mismatch across styles
-    b.style.minimal_width  = 44
-    b.style.maximal_width  = 44
+    -- Hard-equalize runtime height/width as well
+    b.style.minimal_width  = 46
+    b.style.maximal_width  = 46
     b.style.minimal_height = 24
     b.style.maximal_height = 24
     return b
