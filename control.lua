@@ -27,52 +27,37 @@ local function ui_state(pi)
   g.spui = g.spui or {}
   local st = g.spui[pi]
   if not st then
-    -- w/h = window size; button_w/h = list row size (kept for possible future controls)
+    -- w/h = window size; button_w/h = list row size
     st = { w = 440, h = 528, loc = nil, scroll = 0, button_w = 260, button_h = 24 }
     g.spui[pi] = st
   end
   return st
 end
 
--- Returns st (ui_state) and captures the current frame+scroll into it.
 local function capture_ui_state(player)
   local st = ui_state(player.index)
   local frame = player.gui.screen[UI_NAME]
   if frame and frame.valid then
-    -- size
     st.w = tonumber(frame.style.minimal_width) or st.w
     st.h = tonumber(frame.style.minimal_height) or st.h
-    -- position
     local loc = frame.location
-    if loc and loc.x and loc.y then
-      st.loc = { x = loc.x, y = loc.y }
-    end
-    -- scroll
+    if loc and loc.x and loc.y then st.loc = { x = loc.x, y = loc.y } end
     local scroll = frame["platform_scroll"]
     if scroll and scroll.valid then
       local sb = scroll.vertical_scrollbar
-      if sb and sb.valid then
-        st.scroll = tonumber(sb.value) or st.scroll or 0
-      end
+      if sb and sb.valid then st.scroll = tonumber(sb.value) or st.scroll or 0 end
     end
   end
   return st
 end
 
--- Applies st (ui_state) to the newly built frame.
 local function apply_ui_state(player)
   local st = ui_state(player.index)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
-
-  -- size first so location restore uses final frame dimensions
   if st.w then frame.style.minimal_width  = st.w end
   if st.h then frame.style.minimal_height = st.h end
-
-  if st.loc and st.loc.x and st.loc.y then
-    frame.location = { x = st.loc.x, y = st.loc.y }
-  end
-
+  if st.loc and st.loc.x and st.loc.y then frame.location = { x = st.loc.x, y = st.loc.y } end
   local scroll = frame["platform_scroll"]
   if scroll and scroll.valid then
     local sb = scroll.vertical_scrollbar
@@ -83,7 +68,6 @@ local function apply_ui_state(player)
   end
 end
 
--- Apply the configured width/height to all platform entry buttons in-place.
 local function apply_platform_button_size(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
@@ -101,8 +85,6 @@ local function apply_platform_button_size(player)
   end
 end
 
--- Adjust stored row width/height and re-apply without rebuilding the UI.
--- (Not used by header buttons, but kept for potential row-size controls.)
 local function nudge_platform_dims(player, dw, dh)
   local st = ui_state(player.index)
   st.button_w = math.max(100, math.min(600, st.button_w + (dw or 0)))
@@ -110,12 +92,10 @@ local function nudge_platform_dims(player, dw, dh)
   apply_platform_button_size(player)
 end
 
--- Adjust the WINDOW (frame) size in place; used by -W/+W/-H/+H.
 local function nudge_window_dims(player, dw, dh)
   local st = ui_state(player.index)
   st.w = math.max(360, math.min(1600, st.w + (dw or 0)))
   st.h = math.max(320, math.min(1600, st.h + (dh or 0)))
-
   local frame = player.gui.screen[UI_NAME]
   if frame and frame.valid then
     frame.style.minimal_width  = st.w
@@ -138,7 +118,6 @@ local function collect_platforms(force)
   return entries
 end
 
--- Kept for completeness; not used by the current header controls.
 local function safe_sprite_button(parent, name, sprite, tooltip)
   local ok, elem = pcall(function()
     return parent.add{
@@ -155,39 +134,30 @@ end
 
 local function build_platform_ui(player)
   local st = ui_state(player.index)
-  local frame = player.gui.screen.add{
-    type = "frame",
-    name = UI_NAME,
-    direction = "vertical"
-  }
+  local frame = player.gui.screen.add{ type = "frame", name = UI_NAME, direction = "vertical" }
   frame.auto_center = true
 
-  -- header wrapper uses vertical flow so we can stack rows
   local header = frame.add{ type = "flow", direction = "vertical", name = "sp_header" }
 
   -- Row 1: title + drag handle
   local titlebar = header.add{ type = "flow", direction = "horizontal", name = "sp_titlebar" }
-  titlebar.add{
-    type = "label",
-    caption = {"gui.space-platforms-org-ui-title"},
-    style = "frame_title"
-  }
+  titlebar.add{ type = "label", caption = {"gui.space-platforms-org-ui-title"}, style = "frame_title" }
   local drag = titlebar.add{ type = "empty-widget", name = "drag_handle", style = "draggable_space_header" }
   drag.style.horizontally_stretchable = true
   drag.style.height = 24
   drag.drag_target = frame
 
-  -- Row 2: left-aligned WINDOW size controls (custom colored tool buttons)
+  -- Row 2: header controls (use our fixed-size colored styles)
   local controls = header.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
   controls.style.horizontal_spacing = 2
 
   local function add_hdr_btn(name, caption, style)
     local b = controls.add{ type = "button", name = name, caption = caption, style = style }
-    -- Hard-equalize runtime height/width as well
-    b.style.minimal_width  = 46
-    b.style.maximal_width  = 46
-    b.style.minimal_height = 24
-    b.style.maximal_height = 24
+    -- Runtime guard (mirrors style) to ensure perfect match across themes
+    b.style.minimal_width  = 50
+    b.style.maximal_width  = 50
+    b.style.minimal_height = 26
+    b.style.maximal_height = 26
     return b
   end
 
@@ -196,10 +166,9 @@ local function build_platform_ui(player)
   add_hdr_btn(HEADER_H_DEC, "-H", "sp_tool_button_red")
   add_hdr_btn(HEADER_H_INC, "+H", "sp_tool_button_green")
 
-  -- Collect platforms from the force
+  -- List
   local entries = collect_platforms(player.force)
 
-  -- Scroll pane + vertical list container
   local scroll = frame.add{ type = "scroll-pane", name = "platform_scroll" }
   scroll.style.vertically_stretchable   = true
   scroll.style.horizontally_stretchable = true
@@ -214,9 +183,8 @@ local function build_platform_ui(player)
     return
   end
 
-  -- Build rows with alternating background styles.
   for i, entry in ipairs(entries) do
-    local style_name = (i % 2 == 1) and "sp_list_button_tan" or "button"  -- odd: tan, even: default
+    local style_name = (i % 2 == 1) and "sp_list_button_tan" or "button"
     local row = list.add{
       type = "button",
       name = BUTTON_PREFIX .. tostring(entry.id),
@@ -235,7 +203,6 @@ local function build_platform_ui(player)
     end
   end
 
-  -- Ensure sizes and placement are applied on first open.
   apply_platform_button_size(player)
   apply_ui_state(player)
 end
@@ -263,9 +230,7 @@ end
 
 script.on_event("space-platform-org-ui-toggle", function(event)
   local player = game.get_player(event.player_index)
-  if player then
-    toggle_platform_ui(player)
-  end
+  if player then toggle_platform_ui(player) end
 end)
 
 local function open_platform_view(player, pid)
@@ -276,51 +241,31 @@ local function open_platform_view(player, pid)
       if p.index == pid then plat = p; break end
     end
   end
-  if not (plat and plat.valid) then
-    log("UI: platform not found id=" .. tostring(pid))
-    return
-  end
+  if not (plat and plat.valid) then return end
   local surf = plat.surface
-  if not (surf and surf.valid) then
-    log("UI: platform surface invalid id=" .. tostring(pid))
-    return
-  end
+  if not (surf and surf.valid) then return end
   local pos = {x = 0, y = 0}
   local safe = surf.find_non_colliding_position("character", pos, 64, 1) or pos
   pcall(function()
-    player.set_controller{
-      type = defines.controllers.remote,
-      surface = surf,
-      position = safe,
-      start_zoom = 0.7,
-    }
+    player.set_controller{ type = defines.controllers.remote, surface = surf, position = safe, start_zoom = 0.7 }
     player.zoom_to_world(safe, 0.8, surf)
   end)
-  log("UI: opened platform id=" .. pid .. " surface=" .. surf.name)
 end
 
 script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
-
   local name = element.name
 
-  -- Header controls resize the WINDOW (frame), not the list rows.
-  if name == HEADER_W_DEC then
-    nudge_window_dims(player, -SIZE_INC, 0); return
-  elseif name == HEADER_W_INC then
-    nudge_window_dims(player,  SIZE_INC, 0); return
-  elseif name == HEADER_H_DEC then
-    nudge_window_dims(player, 0, -SIZE_INC); return
-  elseif name == HEADER_H_INC then
-    nudge_window_dims(player, 0,  SIZE_INC); return
-  end
+  if name == HEADER_W_DEC then nudge_window_dims(player, -SIZE_INC, 0); return end
+  if name == HEADER_W_INC then nudge_window_dims(player,  SIZE_INC, 0); return end
+  if name == HEADER_H_DEC then nudge_window_dims(player, 0, -SIZE_INC); return end
+  if name == HEADER_H_INC then nudge_window_dims(player, 0,  SIZE_INC); return end
 
-  -- Platform selection
   if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
   local pid = element.tags and element.tags.platform_index
-      or tonumber(name:sub(#BUTTON_PREFIX + 1))
+              or tonumber(name:sub(#BUTTON_PREFIX + 1))
   if not pid then return end
   open_platform_view(player, pid)
 end)
@@ -338,17 +283,15 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
   local el = event.element
   if not (el and el.valid and el.name == UI_NAME) then return end
   local st = ui_state(event.player_index)
-  st.loc = {x = el.location.x, y = el.location.y}
+  st.loc = { x = el.location.x, y = el.location.y }
 end)
 
 script.on_init(function()
-  local g = get_global()
-  g.spui = g.spui or {}
+  local g = get_global(); g.spui = g.spui or {}
 end)
 
 script.on_configuration_changed(function()
-  local g = get_global()
-  g.spui = g.spui or {}
+  local g = get_global(); g.spui = g.spui or {}
 end)
 
 local function rebuild_all_open()
@@ -359,19 +302,13 @@ local function rebuild_all_open()
 end
 
 if defines.events.on_platform_created then
-  script.on_event(defines.events.on_platform_created, rebuild_all_open)
-end
+  script.on_event(defines.events.on_platform_created, rebuild_all_open) end
 if defines.events.on_platform_removed then
-  script.on_event(defines.events.on_platform_removed, rebuild_all_open)
-end
+  script.on_event(defines.events.on_platform_removed, rebuild_all_open) end
 
 script.on_event(defines.events.on_surface_created, function(e)
   local s = game.surfaces[e.surface_index]
-  if s and s.valid and s.name and s.name:find("^platform%-") then
-    rebuild_all_open()
-  end
+  if s and s.valid and s.name and s.name:find("^platform%-") then rebuild_all_open() end
 end)
 
-script.on_event(defines.events.on_surface_deleted, function()
-  rebuild_all_open()
-end)
+script.on_event(defines.events.on_surface_deleted, function() rebuild_all_open() end)
