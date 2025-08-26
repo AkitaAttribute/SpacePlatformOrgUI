@@ -90,7 +90,7 @@ local function collect_platforms(force)
     if p and p.valid then
       entries[#entries + 1] = {
         id = p.index,
-        caption = p.name or ("Platform " .. tostring(p.index)),
+        caption = p.name or "Platform " .. tostring(p.index),
         surface_name = p.surface and p.surface.name or nil
       }
     end
@@ -180,7 +180,7 @@ local function build_platform_ui(player)
   add_size_btn(controls, BTN_W_DEC, "-W")
   add_size_btn(controls, BTN_W_INC, "+W")
   add_size_btn(controls, BTN_H_DEC, "-H")
-  controls.add{ type = "button", name = "sp-size-h-inc", caption = "+H", style = "tool_button", maximal_width = 36, minimal_width = 36 }
+  add_size_btn(controls, BTN_H_INC, "+H")
   local entries = collect_platforms(player.force)
 
   -- Scroll pane + vertical list container
@@ -214,7 +214,7 @@ local function build_platform_ui(player)
       b.style.horizontally_stretchable = true
       b.style.minimal_width  = st.button_w or 260
       b.style.maximal_width  = st.button_w or 260
-      b.style.minimal_height = st.button_h or 24
+      b.style.minimal_height = st.button_h
       b.style.maximal_height = st.button_h or 24
       b.style.top_padding    = 2
       b.style.bottom_padding = 2
