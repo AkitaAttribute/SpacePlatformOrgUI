@@ -211,7 +211,6 @@ local function rebuild_ui(player)
   local existing = player.gui.screen[UI_NAME]
   if existing and existing.valid then existing.destroy() end
   build_platform_ui(player)
-  apply_ui_state(player)
 end
 
 local function toggle_platform_ui(player, refresh)
@@ -225,7 +224,6 @@ local function toggle_platform_ui(player, refresh)
     end
   else
     build_platform_ui(player)
-    apply_ui_state(player)
   end
 end
 
