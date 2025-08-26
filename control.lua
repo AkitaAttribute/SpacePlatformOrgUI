@@ -27,7 +27,7 @@ local function ui_state(pi)
   g.spui = g.spui or {}
   local st = g.spui[pi]
   if not st then
-    st = { w = 440, h = 528, loc = nil, scroll = 0 }
+    st = { w = 440, h = 528, loc = nil, scroll = 0, button_w = 260, button_h = 24 }
     g.spui[pi] = st
   end
   return st
@@ -126,29 +126,29 @@ local function add_size_btn(parent, name, caption)
 end
 
 local function apply_platform_button_size(player)
+  local st = ui_state(player.index)
   local ui = global.ui[player.index]
-  ui.platform_button_w = ui.platform_button_w or 220
-  ui.platform_button_h = ui.platform_button_h or 28
-  local list = ui.platform_list
+  local list = ui and ui.platform_list
   if not (list and list.valid) then return end
   for _, b in pairs(list.children) do
     if b and b.valid then
-      b.style.minimal_width  = ui.platform_button_w
-      b.style.maximal_width  = ui.platform_button_w
-      b.style.minimal_height = ui.platform_button_h
-      b.style.maximal_height = ui.platform_button_h
+      b.style.minimal_width  = st.button_w
+      b.style.maximal_width  = st.button_w
+      b.style.minimal_height = st.button_h
+      b.style.maximal_height = st.button_h
     end
   end
 end
 
 local function nudge_platform_dims(player, dw, dh)
-  local ui = global.ui[player.index]
-  ui.platform_button_w = math.max(120, (ui.platform_button_w or 220) + (dw or 0))
-  ui.platform_button_h = math.max(20,  (ui.platform_button_h or 28)  + (dh or 0))
+  local st = ui_state(player.index)
+  st.button_w = math.max(120, st.button_w + (dw or 0))
+  st.button_h = math.max(20,  st.button_h + (dh or 0))
   apply_platform_button_size(player)
 end
 
 local function build_platform_ui(player)
+  local st = ui_state(player.index)
   local frame = player.gui.screen.add{
     type = "frame",
     name = UI_NAME,
@@ -213,9 +213,10 @@ local function build_platform_ui(player)
     }
     if b and b.valid then
       b.style.horizontally_stretchable = true
-      b.style.minimal_width  = 260
-      b.style.maximal_width  = 320
-      b.style.minimal_height = 24
+      b.style.minimal_width  = st.button_w or 260
+      b.style.maximal_width  = st.button_w or 260
+      b.style.minimal_height = st.button_h or 24
+      b.style.maximal_height = st.button_h or 24
       b.style.top_padding    = 2
       b.style.bottom_padding = 2
     end
@@ -292,7 +293,6 @@ script.on_event(defines.events.on_gui_click, function(event)
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
   local name = element.name
-  local st = ui_state(player.index)
 
   if name == BTN_W_DEC then
     nudge_platform_dims(player, -10, 0)
@@ -311,29 +311,11 @@ script.on_event(defines.events.on_gui_click, function(event)
     return
   end
 
-  local delta_w, delta_h
-  if name == HEADER_W_DEC or name == HEADER_W_INC then
-    delta_w = (name == HEADER_W_DEC) and -SIZE_INC or SIZE_INC
-  elseif name == HEADER_H_DEC then
-    delta_h = -SIZE_INC
-  else
-    if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
-    local pid = element.tags and element.tags.platform_index
-        or tonumber(name:sub(#BUTTON_PREFIX + 1))
-    if not pid then return end
-    open_platform_view(player, pid)
-    return
-  end
-
-  st.w = math.max(320, math.min(900, st.w + (delta_w or 0)))
-  st.h = math.max(240, math.min(900, st.h + (delta_h or 0)))
-  local g = get_global()
-  g.spui[player.index] = st
-  local frame = player.gui.screen[UI_NAME]
-  if frame and frame.valid then
-    frame.style.minimal_width  = st.w
-    frame.style.minimal_height = st.h
-  end
+  if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
+  local pid = element.tags and element.tags.platform_index
+      or tonumber(name:sub(#BUTTON_PREFIX + 1))
+  if not pid then return end
+  open_platform_view(player, pid)
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
