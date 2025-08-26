@@ -10,7 +10,7 @@ local SIZE_INC = 40
 local BTN_W_DEC = BTN_W_DEC or "sp_btn_w_dec"
 local BTN_W_INC = BTN_W_INC or "sp_btn_w_inc"
 local BTN_H_DEC = BTN_H_DEC or "sp_btn_h_dec"
-local BTN_H_INC = BTN_H_INC or "sp_btn_h_inc"
+local BTN_H_INC = BTN_H_INC or "sp-size-h-inc"
 
 -- Return the engine 'global' table safely, creating it if needed.
 local function get_global()
@@ -90,7 +90,7 @@ local function collect_platforms(force)
     if p and p.valid then
       entries[#entries + 1] = {
         id = p.index,
-        caption = p.name or ("Platform " .. p.index),
+        caption = p.name or ("Platform " .. tostring(p.index)),
         surface_name = p.surface and p.surface.name or nil
       }
     end
@@ -127,8 +127,8 @@ end
 
 local function apply_platform_button_size(player)
   local st = ui_state(player.index)
-  local ui = global.ui[player.index]
-  local list = ui and ui.platform_list
+  local frame = player.gui.screen[UI_NAME]
+  local list = frame and frame.find("platform_list")
   if not (list and list.valid) then return end
   for _, b in pairs(list.children) do
     if b and b.valid then
@@ -180,8 +180,7 @@ local function build_platform_ui(player)
   add_size_btn(controls, BTN_W_DEC, "-W")
   add_size_btn(controls, BTN_W_INC, "+W")
   add_size_btn(controls, BTN_H_DEC, "-H")
-  add_size_btn(controls, BTN_H_INC, "+H")
-  safe_sprite_button(controls, HEADER_H_INC, "utility/up_arrow",    {"", "Taller"})
+  controls.add{ type = "button", name = "sp-size-h-inc", caption = "+H", style = "tool_button", maximal_width = 36, minimal_width = 36 }
   local entries = collect_platforms(player.force)
 
   -- Scroll pane + vertical list container
@@ -305,9 +304,6 @@ script.on_event(defines.events.on_gui_click, function(event)
     return
   elseif name == BTN_H_INC then
     nudge_platform_dims(player, 0,  4)
-    return
-  elseif name == HEADER_H_INC then
-    nudge_platform_dims(player, 0, 4)
     return
   end
 
