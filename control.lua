@@ -160,24 +160,22 @@ local function build_platform_ui(player)
 
   if #entries == 0 then
     list.add{ type = "label", caption = {"gui.space-platforms-org-ui-no-platforms"} }
-    apply_platform_button_size(player)
-    return
-  end
-
-  for _, entry in ipairs(entries) do
-    local b = list.add{
-      type = "button",
-      name = BUTTON_PREFIX .. tostring(entry.id),
-      caption = entry.caption,
-      tags = { platform_index = entry.id },
-    }
-    if b and b.valid then
-      b.style.horizontally_stretchable = true
-      b.style.minimal_width = st.button_w
-      b.style.maximal_width = st.button_w
-      b.style.minimal_height = st.button_h
-      b.style.top_padding = 2
-      b.style.bottom_padding = 2
+  else
+    for _, entry in ipairs(entries) do
+      local b = list.add{
+        type = "button",
+        name = BUTTON_PREFIX .. tostring(entry.id),
+        caption = entry.caption,
+        tags = { platform_index = entry.id },
+      }
+      if b and b.valid then
+        b.style.horizontally_stretchable = true
+        b.style.minimal_width = st.button_w
+        b.style.maximal_width = st.button_w
+        b.style.minimal_height = st.button_h
+        b.style.top_padding = 2
+        b.style.bottom_padding = 2
+      end
     end
   end
   apply_platform_button_size(player)
