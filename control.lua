@@ -2,10 +2,10 @@
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
-local BTN_W_INC = "sp-size-w-inc"
-local BTN_W_DEC = "sp-size-w-dec"
-local BTN_H_INC = "sp-size-h-inc"
-local BTN_H_DEC = "sp-size-h-dec"
+local HEADER_W_DEC = "sp-size-w-dec"
+local HEADER_W_INC = "sp-size-w-inc"
+local HEADER_H_DEC = "sp-size-h-dec"
+local HEADER_H_INC = "sp-size-h-inc"
 local SIZE_INC = 40
 
 -- Return the engine 'global' table safely, creating it if needed.
@@ -93,6 +93,7 @@ local function collect_platforms(force)
   end
   return entries
 end
+
 local function safe_sprite_button(parent, name, sprite, tooltip)
   local ok, elem = pcall(function()
     return parent.add{
@@ -112,6 +113,7 @@ local function safe_sprite_button(parent, name, sprite, tooltip)
     caption = tooltip or name
   }
 end
+
 local function build_platform_ui(player)
   local frame = player.gui.screen.add{
     type = "frame",
@@ -135,13 +137,13 @@ local function build_platform_ui(player)
   drag.style.height = 24
   drag.drag_target = frame   -- IMPORTANT: makes the whole frame draggable
 
-  -- Row 2: resize controls
+  -- Row 2: left-aligned resize controls
   local controls = header.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
   controls.style.horizontal_spacing = 2
-  controls.add{ type = "button", name = BTN_W_INC, caption = "+W", style = "frame_action_button", tooltip = "+Width" }
-  controls.add{ type = "button", name = BTN_W_DEC, caption = "-W", style = "frame_action_button", tooltip = "-Width" }
-  controls.add{ type = "button", name = BTN_H_INC, caption = "+H", style = "frame_action_button", tooltip = "+Height" }
-  controls.add{ type = "button", name = BTN_H_DEC, caption = "-H", style = "frame_action_button", tooltip = "-Height" }
+  safe_sprite_button(controls, HEADER_W_DEC, "utility/left_arrow",  "Narrower")
+  safe_sprite_button(controls, HEADER_W_INC, "utility/right_arrow", "Wider")
+  safe_sprite_button(controls, HEADER_H_DEC, "utility/down_arrow",  "Shorter")
+  safe_sprite_button(controls, HEADER_H_INC, "utility/up_arrow",    {"", "Taller"})
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
   log("UI: rendering " .. tostring(#entries) .. " platforms")
@@ -244,37 +246,34 @@ end
 
 script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
-  local player = game.get_player(event.player_index)
+  local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
+  local st = ui_state(player.index)
 
-  local name = element.name
-
-  -- compute resize deltas from +W/-W/+H/-H buttons
-  local delta_w, delta_h = 0, 0
-  if name == BTN_W_INC then
-    delta_w = SIZE_INC
-  elseif name == BTN_W_DEC then
-    delta_w = -SIZE_INC
-  elseif name == BTN_H_INC then
-    delta_h = SIZE_INC
-  elseif name == BTN_H_DEC then
-    delta_h = -SIZE_INC
-  end
-
-  -- apply resize ONCE and stop here
-  if delta_w ~= 0 or delta_h ~= 0 then
-    local st = ui_state(player.index)
-    st.w = math.max(320, math.min(900, (st.w or 440) + delta_w))
-    st.h = math.max(240, math.min(900, (st.h or 528) + delta_h))
-    rebuild_ui(player, true) -- keep position/scroll/location
+  local delta_w, delta_h
+  if element.name == HEADER_W_DEC or element.name == HEADER_W_INC then
+    delta_w = (element.name == HEADER_W_DEC) and -SIZE_INC or SIZE_INC
+  elseif element.name == HEADER_H_DEC or element.name == HEADER_H_INC then
+    delta_h = (element.name == HEADER_H_DEC) and -SIZE_INC or SIZE_INC
+  else
+    -- platform click logic below
+    if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
+    local pid = element.tags and element.tags.platform_index
+        or tonumber(element.name:sub(#BUTTON_PREFIX + 1))
+    if not pid then return end
+    open_platform_view(player, pid)
     return
   end
 
-  -- not a resize: handle platform button clicks
-  if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
-  local pid = element.tags and element.tags.platform_index or tonumber(name:sub(#BUTTON_PREFIX + 1))
-  if not pid then return end
-  open_platform_view(player, pid)
+  st.w = math.max(320, math.min(900, st.w + (delta_w or 0)))
+  st.h = math.max(240, math.min(900, st.h + (delta_h or 0)))
+  local g = get_global()
+  g.spui[player.index] = st
+  local frame = player.gui.screen[UI_NAME]
+  if frame and frame.valid then
+    frame.style.minimal_width  = st.w
+    frame.style.minimal_height = st.h
+  end
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
