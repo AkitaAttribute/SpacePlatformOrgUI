@@ -275,15 +275,20 @@ script.on_event(defines.events.on_gui_click, function(event)
   local st = ui_state(player.index)
 
   local delta_w, delta_h
-  if element.name == BTN_W_DEC or element.name == BTN_W_INC then
-    delta_w = (element.name == BTN_W_DEC) and -SIZE_INC or SIZE_INC
-  elseif element.name == BTN_H_DEC or element.name == BTN_H_INC then
-    delta_h = (element.name == BTN_H_DEC) and -SIZE_INC or SIZE_INC
+  local name = element.name
+  if name == BTN_W_DEC then
+    delta_w = -SIZE_INC
+  elseif name == BTN_W_INC then
+    delta_w = SIZE_INC
+  elseif name == BTN_H_DEC then
+    delta_h = -SIZE_INC
+  elseif name == BTN_H_INC then
+    delta_h = SIZE_INC
   else
     -- platform click logic below
-    if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
+    if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
     local pid = element.tags and element.tags.platform_index
-        or tonumber(element.name:sub(#BUTTON_PREFIX + 1))
+        or tonumber(name:sub(#BUTTON_PREFIX + 1))
     if not pid then return end
     open_platform_view(player, pid)
     return
