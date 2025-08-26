@@ -181,6 +181,7 @@ local function build_platform_ui(player)
     end
   end
   apply_platform_button_size(player)
+  apply_ui_state(player)
 end
 
 local function rebuild_ui(player)
@@ -264,15 +265,14 @@ script.on_event(defines.events.on_gui_click, function(event)
   elseif element.name == "sp-size-h-inc" then
       nudge_platform_dims(player, 0, 2)
       return
-  else
-      -- platform click logic below
-      if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
-      local pid = element.tags and element.tags.platform_index
-          or tonumber(element.name:sub(#BUTTON_PREFIX + 1))
-      if not pid then return end
-      open_platform_view(player, pid)
-      return
   end
+  -- platform click logic below
+  if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
+  local pid = element.tags and element.tags.platform_index
+      or tonumber(element.name:sub(#BUTTON_PREFIX + 1))
+  if not pid then return end
+  open_platform_view(player, pid)
+  return
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
