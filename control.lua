@@ -7,6 +7,10 @@ local HEADER_W_INC = "sp-size-w-inc"
 local HEADER_H_DEC = "sp-size-h-dec"
 local HEADER_H_INC = "sp-size-h-inc"
 local SIZE_INC = 40
+local BTN_W_DEC = "sp_btn_w_dec"
+local BTN_W_INC = "sp_btn_w_inc"
+local BTN_H_DEC = "sp_btn_h_dec"
+local BTN_H_INC = "sp_btn_h_inc"
 
 -- Return the engine 'global' table safely, creating it if needed.
 local function get_global()
@@ -114,6 +118,34 @@ local function safe_sprite_button(parent, name, sprite, tooltip)
   }
 end
 
+local function add_size_btn(parent, name, caption)
+  local b = parent.add{ type = "button", name = name, caption = caption, style = "tool_button" }
+  b.style.width = 36  -- prevents caption from collapsing to "…"
+  return b
+end
+
+local function apply_platform_button_size(player)
+  local ui = global.ui[player.index]
+  ui.platform_button_w = ui.platform_button_w or 220
+  ui.platform_button_h = ui.platform_button_h or 28
+
+  local list = ui.platform_list
+  if not (list and list.valid) then return end
+  for _, b in pairs(list.children) do
+    if b and b.valid then
+      b.style.width  = ui.platform_button_w
+      b.style.height = ui.platform_button_h
+    end
+  end
+end
+
+local function nudge_platform_dims(player, dw, dh)
+  local ui = global.ui[player.index]
+  ui.platform_button_w = math.max(120, (ui.platform_button_w or 220) + dw)
+  ui.platform_button_h = math.max(20,  (ui.platform_button_h or 28)  + dh)
+  apply_platform_button_size(player)
+end
+
 local function build_platform_ui(player)
   local frame = player.gui.screen.add{
     type = "frame",
@@ -143,7 +175,11 @@ local function build_platform_ui(player)
   safe_sprite_button(controls, HEADER_W_DEC, "utility/left_arrow",  "Narrower")
   safe_sprite_button(controls, HEADER_W_INC, "utility/right_arrow", "Wider")
   safe_sprite_button(controls, HEADER_H_DEC, "utility/down_arrow",  "Shorter")
+  add_size_btn(controls, BTN_W_DEC, "-W")
+  add_size_btn(controls, BTN_W_INC, "+W")
+  add_size_btn(controls, BTN_H_DEC, "-H")
   safe_sprite_button(controls, HEADER_H_INC, "utility/up_arrow",    {"", "Taller"})
+  add_size_btn(controls, BTN_H_INC, "+H")
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
   log("UI: rendering " .. tostring(#entries) .. " platforms")
@@ -156,9 +192,14 @@ local function build_platform_ui(player)
   local list = scroll.add{ type = "flow", name = "platform_list", direction = "vertical" }
   list.style.vertically_stretchable   = true
   list.style.horizontally_stretchable = true
+  local g = get_global()
+  g.ui = g.ui or {}
+  g.ui[player.index] = g.ui[player.index] or {}
+  g.ui[player.index].platform_list = list
 
   if #entries == 0 then
     list.add{ type = "label", caption = {"gui.space-platforms-org-ui-no-platforms"} }
+    apply_platform_button_size(player)
     return
   end
 
@@ -178,6 +219,7 @@ local function build_platform_ui(player)
       b.style.bottom_padding = 2
     end
   end
+  apply_platform_button_size(player)
 end
 
 local function rebuild_ui(player)
@@ -248,18 +290,32 @@ script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
+  local name = element.name
   local st = ui_state(player.index)
 
+  if name == BTN_W_DEC then
+    nudge_platform_dims(player, -10, 0)
+    return
+  elseif name == BTN_W_INC then
+    nudge_platform_dims(player,  10, 0)
+    return
+  elseif name == BTN_H_DEC then
+    nudge_platform_dims(player, 0, -4)
+    return
+  elseif name == BTN_H_INC then
+    nudge_platform_dims(player, 0,  4)
+    return
+  end
+
   local delta_w, delta_h
-  if element.name == HEADER_W_DEC or element.name == HEADER_W_INC then
-    delta_w = (element.name == HEADER_W_DEC) and -SIZE_INC or SIZE_INC
-  elseif element.name == HEADER_H_DEC or element.name == HEADER_H_INC then
-    delta_h = (element.name == HEADER_H_DEC) and -SIZE_INC or SIZE_INC
+  if name == HEADER_W_DEC or name == HEADER_W_INC then
+    delta_w = (name == HEADER_W_DEC) and -SIZE_INC or SIZE_INC
+  elseif name == HEADER_H_DEC or name == HEADER_H_INC then
+    delta_h = (name == HEADER_H_DEC) and -SIZE_INC or SIZE_INC
   else
-    -- platform click logic below
-    if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
+    if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
     local pid = element.tags and element.tags.platform_index
-        or tonumber(element.name:sub(#BUTTON_PREFIX + 1))
+        or tonumber(name:sub(#BUTTON_PREFIX + 1))
     if not pid then return end
     open_platform_view(player, pid)
     return
@@ -295,11 +351,13 @@ end)
 script.on_init(function()
   local g = get_global()
   g.spui = g.spui or {}
+  g.ui = g.ui or {}
 end)
 
 script.on_configuration_changed(function()
   local g = get_global()
   g.spui = g.spui or {}
+  g.ui = g.ui or {}
 end)
 
 local function rebuild_all_open()
