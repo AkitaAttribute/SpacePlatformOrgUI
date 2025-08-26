@@ -93,6 +93,25 @@ local function collect_platforms(force)
   end
   return entries
 end
+local function safe_sprite_button(parent, name, sprite, tooltip)
+  local ok, elem = pcall(function()
+    return parent.add{
+      type   = "sprite-button",
+      name   = name,
+      sprite = sprite,
+      style  = "frame_action_button",
+      tooltip = tooltip,
+      -- Do NOT set caption for sprite-button
+    }
+  end)
+  if ok and elem then return elem end
+  -- Fallback so missing sprites never crash the mod
+  return parent.add{
+    type = "button",
+    name = name,
+    caption = tooltip or name
+  }
+end
 local function build_platform_ui(player)
   local frame = player.gui.screen.add{
     type = "frame",
@@ -255,16 +274,19 @@ script.on_event(defines.events.on_gui_click, function(event)
 
   local delta_w, delta_h
   local name = element.name
-  if name == BTN_W_DEC then
+  if     name == BTN_W_DEC then
     delta_w = -SIZE_INC
   elseif name == BTN_W_INC then
-    delta_w = SIZE_INC
+    delta_w =  SIZE_INC
   elseif name == BTN_H_DEC then
     delta_h = -SIZE_INC
   elseif name == BTN_H_INC then
-    delta_h = SIZE_INC
+    delta_h =  SIZE_INC
   else
-    -- platform click logic below
+    -- fall through to platform-button logic below
+  end
+
+  if not (delta_w or delta_h) then
     if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
     local pid = element.tags and element.tags.platform_index
         or tonumber(name:sub(#BUTTON_PREFIX + 1))
