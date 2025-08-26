@@ -164,6 +164,7 @@ local function build_platform_ui(player)
     apply_ui_state(player)
     return
   end
+  apply_ui_state(player)
 
   for _, entry in ipairs(entries) do
     local b = list.add{
@@ -253,19 +254,17 @@ script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
-  if element.name == "sp-size-w-dec" or element.name == "sp-size-w-inc" then
-    if element.name == "sp-size-w-dec" then
-      nudge_platform_dims(player, -10, 0)
-    else
-      nudge_platform_dims(player, 10, 0)
-    end
+  if element.name == "sp-size-w-dec" then
+    nudge_platform_dims(player, -2, 0)
     return
-  elseif element.name == "sp-size-h-dec" or element.name == "sp-size-h-inc" then
-    if element.name == "sp-size-h-dec" then
-      nudge_platform_dims(player, 0, -4)
-    else
-      nudge_platform_dims(player, 0, 4)
-    end
+  elseif element.name == "sp-size-w-inc" then
+    nudge_platform_dims(player, 2, 0)
+    return
+  elseif element.name == "sp-size-h-dec" then
+    nudge_platform_dims(player, 0, -2)
+    return
+  elseif element.name == "sp-size-h-inc" then
+    nudge_platform_dims(player, 0, 2)
     return
   end
   -- platform click logic below
