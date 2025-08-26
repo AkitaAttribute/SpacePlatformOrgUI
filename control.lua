@@ -137,7 +137,7 @@ local function build_platform_ui(player)
   drag.style.height = 24
   drag.drag_target = frame   -- IMPORTANT: makes the whole frame draggable
 
-  -- Row 2: left-aligned resize controls
+  -- Row 2: resize controls
   local controls = header.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
   controls.style.horizontal_spacing = 2
   controls.add{
