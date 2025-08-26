@@ -204,7 +204,8 @@ local function build_platform_ui(player)
     return
   end
 
-  for _, entry in ipairs(entries) do
+  local tan = { r = 0xD2/255, g = 0xB4/255, b = 0x8C/255 }
+  for i, entry in ipairs(entries) do
     local b = list.add{
       type = "button",
       name = BUTTON_PREFIX .. tostring(entry.id),
@@ -220,6 +221,17 @@ local function build_platform_ui(player)
       b.style.maximal_height = st.button_h
       b.style.top_padding    = 2
       b.style.bottom_padding = 2
+      if i % 2 == 0 then
+        b.style.font_color          = tan
+        b.style.hovered_font_color  = tan
+        b.style.clicked_font_color  = tan
+        b.style.disabled_font_color = tan
+      else
+        b.style.font_color          = { r = 1, g = 1, b = 1 }
+        b.style.hovered_font_color  = { r = 1, g = 1, b = 1 }
+        b.style.clicked_font_color  = { r = 1, g = 1, b = 1 }
+        b.style.disabled_font_color = { r = 1, g = 1, b = 1 }
+      end
     end
   end
 
