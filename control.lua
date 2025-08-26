@@ -2,11 +2,12 @@
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
+
+-- Kept for potential future use; current implementation uses explicit names.
 local HEADER_W_DEC = "sp-size-w-dec"
 local HEADER_W_INC = "sp-size-w-inc"
 local HEADER_H_DEC = "sp-size-h-dec"
 local HEADER_H_INC = "sp-size-h-inc"
-local SIZE_INC = 40
 
 -- Return the engine 'global' table safely, creating it if needed.
 local function get_global()
@@ -79,25 +80,33 @@ local function apply_ui_state(player)
   end
 end
 
+-- Apply the configured width/height to all platform entry buttons in-place.
 local function apply_platform_button_size(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
+
   local st = ui_state(player.index)
-  local list = frame.find("platform_list")
+
+  -- Locate the list safely via known hierarchy.
+  local scroll = frame["platform_scroll"]
+  local list = (scroll and scroll.valid) and scroll["platform_list"] or nil
   if not (list and list.valid) then return end
+
   for _, child in ipairs(list.children) do
     if child and child.valid then
-      child.style.minimal_width = st.button_w
-      child.style.maximal_width = st.button_w
+      child.style.minimal_width  = st.button_w
+      child.style.maximal_width  = st.button_w
       child.style.minimal_height = st.button_h
+      child.style.maximal_height = st.button_h
     end
   end
 end
 
+-- Adjust stored row width/height and re-apply without rebuilding the UI.
 local function nudge_platform_dims(player, dw, dh)
   local st = ui_state(player.index)
-  st.button_w = math.max(100, math.min(600, st.button_w + dw))
-  st.button_h = math.max(20, math.min(60, st.button_h + dh))
+  st.button_w = math.max(100, math.min(600, st.button_w + (dw or 0)))
+  st.button_h = math.max(20,  math.min(60,  st.button_h + (dh or 0)))
   apply_platform_button_size(player)
 end
 
@@ -116,6 +125,7 @@ local function collect_platforms(force)
   return entries
 end
 
+-- Kept for completeness; not used by the current header controls.
 local function safe_sprite_button(parent, name, sprite, tooltip)
   local ok, elem = pcall(function()
     return parent.add{
@@ -163,10 +173,10 @@ local function build_platform_ui(player)
   -- Row 2: left-aligned resize controls
   local controls = header.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
   controls.style.horizontal_spacing = 2
-  controls.add{ type = "button", name = "sp-size-w-dec", caption = "-W", style = "tool_button", maximal_width = 36, minimal_width = 36 }
-  controls.add{ type = "button", name = "sp-size-w-inc", caption = "+W", style = "tool_button", maximal_width = 36, minimal_width = 36 }
-  controls.add{ type = "button", name = "sp-size-h-dec", caption = "-H", style = "tool_button", maximal_width = 36, minimal_width = 36 }
-  controls.add{ type = "button", name = "sp-size-h-inc", caption = "+H", style = "tool_button", maximal_width = 36, minimal_width = 36 }
+  controls.add{ type = "button", name = HEADER_W_DEC, caption = "-W", style = "tool_button", maximal_width = 36, minimal_width = 36 }
+  controls.add{ type = "button", name = HEADER_W_INC, caption = "+W", style = "tool_button", maximal_width = 36, minimal_width = 36 }
+  controls.add{ type = "button", name = HEADER_H_DEC, caption = "-H", style = "tool_button", maximal_width = 36, minimal_width = 36 }
+  controls.add{ type = "button", name = HEADER_H_INC, caption = "+H", style = "tool_button", maximal_width = 36, minimal_width = 36 }
 
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
@@ -183,6 +193,7 @@ local function build_platform_ui(player)
 
   if #entries == 0 then
     list.add{ type = "label", caption = {"gui.space-platforms-org-ui-no-platforms"} }
+    apply_ui_state(player)
     return
   end
 
@@ -198,10 +209,13 @@ local function build_platform_ui(player)
       b.style.minimal_width  = st.button_w
       b.style.maximal_width  = st.button_w
       b.style.minimal_height = st.button_h
+      b.style.maximal_height = st.button_h
       b.style.top_padding    = 2
       b.style.bottom_padding = 2
     end
   end
+
+  -- Ensure sizes are applied even on first open.
   apply_platform_button_size(player)
   apply_ui_state(player)
 end
@@ -226,8 +240,6 @@ local function toggle_platform_ui(player, refresh)
     build_platform_ui(player)
   end
 end
-
-
 
 script.on_event("space-platform-org-ui-toggle", function(event)
   local player = game.get_player(event.player_index)
@@ -272,29 +284,30 @@ script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
-  local st = ui_state(player.index)
 
-  if element.name == "sp-size-w-dec" then
+  local name = element.name
+
+  -- Size controls: mutate in place; do not rebuild UI.
+  if name == HEADER_W_DEC then
     nudge_platform_dims(player, -2, 0)
     return
-  elseif element.name == "sp-size-w-inc" then
-    nudge_platform_dims(player, 2, 0)
+  elseif name == HEADER_W_INC then
+    nudge_platform_dims(player,  2, 0)
     return
-  elseif element.name == "sp-size-h-dec" then
+  elseif name == HEADER_H_DEC then
     nudge_platform_dims(player, 0, -2)
     return
-  elseif element.name == "sp-size-h-inc" then
-    nudge_platform_dims(player, 0, 2)
+  elseif name == HEADER_H_INC then
+    nudge_platform_dims(player, 0,  2)
     return
   end
 
-  -- platform click logic below
-  if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
+  -- Platform selection
+  if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
   local pid = element.tags and element.tags.platform_index
-      or tonumber(element.name:sub(#BUTTON_PREFIX + 1))
+      or tonumber(name:sub(#BUTTON_PREFIX + 1))
   if not pid then return end
   open_platform_view(player, pid)
-  return
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
