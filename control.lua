@@ -2,15 +2,6 @@
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
-local HEADER_W_DEC = "sp-size-w-dec"
-local HEADER_W_INC = "sp-size-w-inc"
-local HEADER_H_DEC = "sp-size-h-dec"
-local HEADER_H_INC = "sp-size-h-inc"
-local SIZE_INC = 40
-local BTN_W_DEC = BTN_W_DEC or "sp_btn_w_dec"
-local BTN_W_INC = BTN_W_INC or "sp_btn_w_inc"
-local BTN_H_DEC = BTN_H_DEC or "sp_btn_h_dec"
-local BTN_H_INC = BTN_H_INC or "sp-size-h-inc"
 
 -- Return the engine 'global' table safely, creating it if needed.
 local function get_global()
@@ -83,6 +74,28 @@ local function apply_ui_state(player)
   end
 end
 
+local function apply_platform_button_size(player)
+  local frame = player.gui.screen[UI_NAME]
+  if not (frame and frame.valid) then return end
+  local st = ui_state(player.index)
+  local list = frame.find("platform_list")
+  if not (list and list.valid) then return end
+  for _, child in ipairs(list.children) do
+    if child and child.valid then
+      child.style.minimal_width = st.button_w
+      child.style.maximal_width = st.button_w
+      child.style.minimal_height = st.button_h
+    end
+  end
+end
+
+local function nudge_platform_dims(player, dw, dh)
+  local st = ui_state(player.index)
+  st.button_w = math.max(100, math.min(600, st.button_w + dw))
+  st.button_h = math.max(20, math.min(60, st.button_h + dh))
+  apply_platform_button_size(player)
+end
+
 local function collect_platforms(force)
   local entries = {}
   if not (force and force.valid and force.platforms) then return entries end
@@ -90,61 +103,12 @@ local function collect_platforms(force)
     if p and p.valid then
       entries[#entries + 1] = {
         id = p.index,
-        caption = p.name or "Platform " .. tostring(p.index),
+        caption = p.name or ("Platform " .. tostring(p.index)),
         surface_name = p.surface and p.surface.name or nil
       }
     end
   end
   return entries
-end
-
-local function safe_sprite_button(parent, name, sprite, tooltip)
-  local ok, elem = pcall(function()
-    return parent.add{
-      type   = "sprite-button",
-      name   = name,
-      sprite = sprite,
-      style  = "frame_action_button",
-      tooltip = tooltip,
-      -- Do NOT set caption for sprite-button
-    }
-  end)
-  if ok and elem then return elem end
-  -- Fallback so missing sprites never crash the mod
-  return parent.add{
-    type = "button",
-    name = name,
-    caption = tooltip or name
-  }
-end
-
-local function add_size_btn(parent, name, caption)
-  local b = parent.add{ type = "button", name = name, caption = caption, style = "tool_button" }
-  b.style.minimal_width = 36
-  b.style.maximal_width = 36
-  return b
-end
-
-local function apply_platform_button_size(player)
-  local st = ui_state(player.index)
-  local frame = player.gui.screen[UI_NAME]
-  local list = frame and frame.find("platform_list")
-  if not (list and list.valid) then return end
-  for _, b in pairs(list.children) do
-    if b and b.valid then
-      b.style.minimal_width  = st.button_w
-      b.style.maximal_width  = st.button_w
-      b.style.minimal_height = st.button_h
-      b.style.maximal_height = st.button_h
-    end
-  end
-end
-
-local function nudge_platform_dims(player, dw, dh)
-  local st = ui_state(player.index)
-  st.button_w = math.max(120, st.button_w + (dw or 0))
-  st.button_h = math.max(20,  st.button_h + (dh or 0))
-  apply_platform_button_size(player)
 end
 
 local function build_platform_ui(player)
@@ -174,13 +138,10 @@ local function build_platform_ui(player)
   -- Row 2: left-aligned resize controls
   local controls = header.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
   controls.style.horizontal_spacing = 2
-  safe_sprite_button(controls, HEADER_W_DEC, "utility/left_arrow",  "Narrower")
-  safe_sprite_button(controls, HEADER_W_INC, "utility/right_arrow", "Wider")
-  safe_sprite_button(controls, HEADER_H_DEC, "utility/down_arrow",  "Shorter")
-  add_size_btn(controls, BTN_W_DEC, "-W")
-  add_size_btn(controls, BTN_W_INC, "+W")
-  add_size_btn(controls, BTN_H_DEC, "-H")
-  add_size_btn(controls, BTN_H_INC, "+H")
+  controls.add{ type = "button", name = "sp-size-w-dec", caption = "-W", style = "tool_button", maximal_width = 36, minimal_width = 36 }
+  controls.add{ type = "button", name = "sp-size-w-inc", caption = "+W", style = "tool_button", maximal_width = 36, minimal_width = 36 }
+  controls.add{ type = "button", name = "sp-size-h-dec", caption = "-H", style = "tool_button", maximal_width = 36, minimal_width = 36 }
+  controls.add{ type = "button", name = "sp-size-h-inc", caption = "+H", style = "tool_button", maximal_width = 36, minimal_width = 36 }
   local entries = collect_platforms(player.force)
 
   -- Scroll pane + vertical list container
@@ -212,11 +173,10 @@ local function build_platform_ui(player)
     }
     if b and b.valid then
       b.style.horizontally_stretchable = true
-      b.style.minimal_width  = st.button_w or 260
-      b.style.maximal_width  = st.button_w or 260
+      b.style.minimal_width = st.button_w
+      b.style.maximal_width = st.button_w
       b.style.minimal_height = st.button_h
-      b.style.maximal_height = st.button_h or 24
-      b.style.top_padding    = 2
+      b.style.top_padding = 2
       b.style.bottom_padding = 2
     end
   end
@@ -291,27 +251,28 @@ script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
-  local name = element.name
-
-  if name == BTN_W_DEC then
-    nudge_platform_dims(player, -10, 0)
-    return
-  elseif name == BTN_W_INC then
-    nudge_platform_dims(player,  10, 0)
-    return
-  elseif name == BTN_H_DEC then
-    nudge_platform_dims(player, 0, -4)
-    return
-  elseif name == BTN_H_INC then
-    nudge_platform_dims(player, 0,  4)
-    return
+  local delta_w, delta_h
+  if element.name == "sp-size-w-dec" then
+      nudge_platform_dims(player, -2, 0)
+      return
+  elseif element.name == "sp-size-w-inc" then
+      nudge_platform_dims(player, 2, 0)
+      return
+  elseif element.name == "sp-size-h-dec" then
+      nudge_platform_dims(player, 0, -2)
+      return
+  elseif element.name == "sp-size-h-inc" then
+      nudge_platform_dims(player, 0, 2)
+      return
+  else
+      -- platform click logic below
+      if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
+      local pid = element.tags and element.tags.platform_index
+          or tonumber(element.name:sub(#BUTTON_PREFIX + 1))
+      if not pid then return end
+      open_platform_view(player, pid)
+      return
   end
-
-  if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
-  local pid = element.tags and element.tags.platform_index
-      or tonumber(name:sub(#BUTTON_PREFIX + 1))
-  if not pid then return end
-  open_platform_view(player, pid)
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
