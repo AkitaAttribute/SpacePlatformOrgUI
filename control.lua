@@ -138,34 +138,10 @@ local function build_platform_ui(player)
   -- Row 2: resize controls
   local controls = header.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
   controls.style.horizontal_spacing = 2
-  controls.add{
-    type = "button",
-    name = BTN_W_INC,
-    caption = "+W",
-    style = "frame_action_button",
-    tooltip = "+Width",
-  }
-  controls.add{
-    type = "button",
-    name = BTN_W_DEC,
-    caption = "-W",
-    style = "frame_action_button",
-    tooltip = "-Width",
-  }
-  controls.add{
-    type = "button",
-    name = BTN_H_INC,
-    caption = "+H",
-    style = "frame_action_button",
-    tooltip = "+Height",
-  }
-  controls.add{
-    type = "button",
-    name = BTN_H_DEC,
-    caption = "-H",
-    style = "frame_action_button",
-    tooltip = "-Height",
-  }
+  controls.add{ type = "button", name = BTN_W_INC, caption = "+W", style = "frame_action_button", tooltip = "+Width" }
+  controls.add{ type = "button", name = BTN_W_DEC, caption = "-W", style = "frame_action_button", tooltip = "-Width" }
+  controls.add{ type = "button", name = BTN_H_INC, caption = "+H", style = "frame_action_button", tooltip = "+Height" }
+  controls.add{ type = "button", name = BTN_H_DEC, caption = "-H", style = "frame_action_button", tooltip = "-Height" }
   -- Collect platforms from the force
   local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
   log("UI: rendering " .. tostring(#entries) .. " platforms")
@@ -268,18 +244,21 @@ end
 
 script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
-  local player  = game.get_player(event.player_index)
+  local player = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
 
-  -- single source of truth for the clicked element name
   local name = element.name
 
   -- compute resize deltas from +W/-W/+H/-H buttons
   local delta_w, delta_h = 0, 0
-  if     name == BTN_W_INC then delta_w = SIZE_INC
-  elseif name == BTN_W_DEC then delta_w = -SIZE_INC
-  elseif name == BTN_H_INC then delta_h = SIZE_INC
-  elseif name == BTN_H_DEC then delta_h = -SIZE_INC
+  if name == BTN_W_INC then
+    delta_w = SIZE_INC
+  elseif name == BTN_W_DEC then
+    delta_w = -SIZE_INC
+  elseif name == BTN_H_INC then
+    delta_h = SIZE_INC
+  elseif name == BTN_H_DEC then
+    delta_h = -SIZE_INC
   end
 
   -- apply resize ONCE and stop here
@@ -287,14 +266,13 @@ script.on_event(defines.events.on_gui_click, function(event)
     local st = ui_state(player.index)
     st.w = math.max(320, math.min(900, (st.w or 440) + delta_w))
     st.h = math.max(240, math.min(900, (st.h or 528) + delta_h))
-    rebuild_ui(player, true)  -- keep position/scroll/location
+    rebuild_ui(player, true) -- keep position/scroll/location
     return
   end
 
   -- not a resize: handle platform button clicks
-  if name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
-  local pid = element.tags and element.tags.platform_index
-              or tonumber(name:sub(#BUTTON_PREFIX + 1))
+  if not name or name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
+  local pid = element.tags and element.tags.platform_index or tonumber(name:sub(#BUTTON_PREFIX + 1))
   if not pid then return end
   open_platform_view(player, pid)
 end)
