@@ -183,9 +183,11 @@ local function build_platform_ui(player)
 
   local function add_hdr_btn(name, caption, style)
     local b = controls.add{ type = "button", name = name, caption = caption, style = style }
-    -- Wider to avoid ellipsis with the colored tool style
-    b.style.minimal_width = 44
-    b.style.maximal_width = 44
+    -- Force consistent size to avoid height mismatch across styles
+    b.style.minimal_width  = 44
+    b.style.maximal_width  = 44
+    b.style.minimal_height = 24
+    b.style.maximal_height = 24
     return b
   end
 
