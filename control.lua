@@ -2,6 +2,11 @@
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
+local HEADER_W_DEC = "sp-size-w-dec"
+local HEADER_W_INC = "sp-size-w-inc"
+local HEADER_H_DEC = "sp-size-h-dec"
+local HEADER_H_INC = "sp-size-h-inc"
+local SIZE_INC = 40
 
 -- Return the engine 'global' table safely, creating it if needed.
 local function get_global()
@@ -111,6 +116,26 @@ local function collect_platforms(force)
   return entries
 end
 
+local function safe_sprite_button(parent, name, sprite, tooltip)
+  local ok, elem = pcall(function()
+    return parent.add{
+      type   = "sprite-button",
+      name   = name,
+      sprite = sprite,
+      style  = "frame_action_button",
+      tooltip = tooltip,
+      -- Do NOT set caption for sprite-button
+    }
+  end)
+  if ok and elem then return elem end
+  -- Fallback so missing sprites never crash the mod
+  return parent.add{
+    type = "button",
+    name = name,
+    caption = tooltip or name
+  }
+end
+
 local function build_platform_ui(player)
   local st = ui_state(player.index)
   local frame = player.gui.screen.add{
@@ -142,7 +167,10 @@ local function build_platform_ui(player)
   controls.add{ type = "button", name = "sp-size-w-inc", caption = "+W", style = "tool_button", maximal_width = 36, minimal_width = 36 }
   controls.add{ type = "button", name = "sp-size-h-dec", caption = "-H", style = "tool_button", maximal_width = 36, minimal_width = 36 }
   controls.add{ type = "button", name = "sp-size-h-inc", caption = "+H", style = "tool_button", maximal_width = 36, minimal_width = 36 }
-  local entries = collect_platforms(player.force)
+
+  -- Collect platforms from the force
+  local entries = collect_platforms(player.force)  -- sequential array of {id, caption}
+  log("UI: rendering " .. tostring(#entries) .. " platforms")
 
   -- Scroll pane + vertical list container
   local scroll = frame.add{ type = "scroll-pane", name = "platform_scroll" }
@@ -152,30 +180,26 @@ local function build_platform_ui(player)
   local list = scroll.add{ type = "flow", name = "platform_list", direction = "vertical" }
   list.style.vertically_stretchable   = true
   list.style.horizontally_stretchable = true
-  local g = get_global()
-  g.ui = g.ui or {}
-  g.ui[player.index] = g.ui[player.index] or {}
-  local ui = g.ui[player.index]
-  ui.platform_list = list
 
   if #entries == 0 then
     list.add{ type = "label", caption = {"gui.space-platforms-org-ui-no-platforms"} }
-  else
-    for _, entry in ipairs(entries) do
-      local b = list.add{
-        type = "button",
-        name = BUTTON_PREFIX .. tostring(entry.id),
-        caption = entry.caption,
-        tags = { platform_index = entry.id },
-      }
-      if b and b.valid then
-        b.style.horizontally_stretchable = true
-        b.style.minimal_width = st.button_w
-        b.style.maximal_width = st.button_w
-        b.style.minimal_height = st.button_h
-        b.style.top_padding = 2
-        b.style.bottom_padding = 2
-      end
+    return
+  end
+
+  for _, entry in ipairs(entries) do
+    local b = list.add{
+      type = "button",
+      name = BUTTON_PREFIX .. tostring(entry.id),
+      caption = entry.caption,
+      tags = { platform_index = entry.id },
+    }
+    if b and b.valid then
+      b.style.horizontally_stretchable = true
+      b.style.minimal_width  = st.button_w
+      b.style.maximal_width  = st.button_w
+      b.style.minimal_height = st.button_h
+      b.style.top_padding    = 2
+      b.style.bottom_padding = 2
     end
   end
   apply_platform_button_size(player)
@@ -250,6 +274,8 @@ script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
+  local st = ui_state(player.index)
+
   if element.name == "sp-size-w-dec" then
     nudge_platform_dims(player, -2, 0)
     return
@@ -263,6 +289,7 @@ script.on_event(defines.events.on_gui_click, function(event)
     nudge_platform_dims(player, 0, 2)
     return
   end
+
   -- platform click logic below
   if not element.name or element.name:sub(1, #BUTTON_PREFIX) ~= BUTTON_PREFIX then return end
   local pid = element.tags and element.tags.platform_index
@@ -291,13 +318,11 @@ end)
 script.on_init(function()
   local g = get_global()
   g.spui = g.spui or {}
-  g.ui = g.ui or {}
 end)
 
 script.on_configuration_changed(function()
   local g = get_global()
   g.spui = g.spui or {}
-  g.ui = g.ui or {}
 end)
 
 local function rebuild_all_open()
