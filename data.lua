@@ -34,20 +34,17 @@ end
 
 local TAN = hex_to_tint("#FFD9C2")
 
--- Copy a graphical set and tint only base/center. Keep shadow untouched to avoid color bleed.
+-- Copy a graphical set and tint base/center only (keep shadow to avoid “bleed”)
 local function tinted_copy(gs, tint)
   local out = util.table.deepcopy(gs)
   if out.base   then out.base.tint   = tint end
   if out.center then out.center.tint = tint end
-  -- DO NOT touch out.shadow
   return out
 end
 
--- Tan button style by tinting the real stock button’s sets (shadow preserved)
 styles["sp_list_button_tan"] = {
   type = "button_style",
   parent = "button",
-
   default_graphical_set  = tinted_copy(styles.button.default_graphical_set,  TAN),
   hovered_graphical_set  = tinted_copy(styles.button.hovered_graphical_set,  lighten(TAN, 0.10)),
   clicked_graphical_set  = tinted_copy(styles.button.clicked_graphical_set,  darken(TAN, 0.12)),
