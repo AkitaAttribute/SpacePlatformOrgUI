@@ -10,13 +10,9 @@ local HEADER_H_DEC = "sp-size-h-dec"
 local HEADER_H_INC = "sp-size-h-inc"
 local HEADER_ADD_FOLDER = "sp-add-folder"
 
--- Folder/UI ids & prefixes
-local FOLDER_ROW_PREFIX      = "sp-folder-row-"          -- folder header button
-local FOLDER_TOGGLE_PREFIX   = "sp-folder-toggle-"       -- expand/collapse sprite
-local FOLDER_DELETE_PREFIX   = "sp-folder-delete-"       -- delete folder sprite
-local MOVE_MENU_NAME         = "sp-move-menu"            -- move popup frame
-local MOVE_OPEN_PREFIX       = "sp-move-open-"           -- per-platform ⋯ button
-local MOVE_TARGET_PREFIX     = "sp-move-target-"         -- target selection button
+-- Move menu
+local MOVE_MENU_NAME = "sp-move-menu"
+local UNSORTED_ID = -1  -- sentinel for "(Unsorted)"
 
 -- Window size step in pixels
 local SIZE_INC = 20
@@ -94,7 +90,6 @@ local function apply_ui_state(player)
   end
 end
 
--- Find the button inside a row flow
 local function get_row_button(row)
   if not (row and row.valid and row.type == "flow") then return nil end
   for _, c in ipairs(row.children) do
@@ -105,7 +100,6 @@ local function get_row_button(row)
   return nil
 end
 
--- Apply the configured width/height to all platform entry buttons in-place.
 local function apply_platform_button_size(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
@@ -170,25 +164,56 @@ local function delete_folder(player, folder_id)
   end
 end
 
-local function assign_platform(player, platform_id, folder_id) -- folder_id may be nil for Unsorted
+local function assign_platform(player, platform_id, folder_id) -- folder_id may be nil (unsorted)
   local m = folder_model(player.index)
   if folder_id and not m.folders[folder_id] then return end
   m.platform_folder[platform_id] = folder_id
 end
 
--- ---------- UI build ----------
+-- ---------- Move menu ----------
 
 local function destroy_move_menu(player)
   local menu = player.gui.screen[MOVE_MENU_NAME]
   if menu and menu.valid then menu.destroy() end
 end
 
+local function open_move_menu(player, platform_id)
+  destroy_move_menu(player)
+  local menu = player.gui.screen.add{ type = "frame", name = MOVE_MENU_NAME, direction = "vertical" }
+  menu.auto_center = true
+
+  local m = folder_model(player.index)
+  -- Folders
+  for _, fid in ipairs(m.order) do
+    local f = m.folders[fid]
+    if f then
+      menu.add{
+        type = "button",
+        name = "sp-move-target",
+        caption = f.name,
+        style = "button",
+        tags = { action = "move_to_folder", folder_id = fid, platform_id = platform_id }
+      }
+    end
+  end
+  -- Unsorted
+  menu.add{
+    type = "button",
+    name = "sp-move-target",
+    caption = "(Unsorted)",
+    style  = "button",
+    tags   = { action = "move_to_folder", folder_id = UNSORTED_ID, platform_id = platform_id }
+  }
+end
+
+-- ---------- UI build ----------
+
 local function add_row(list_flow, style_name, caption, platform_id)
   local row = list_flow.add{ type = "flow", direction = "horizontal", tags = { kind = "row" } }
 
   local btn = row.add{
     type = "button",
-    name = BUTTON_PREFIX .. tostring(platform_id),  -- keep this name for click handling
+    name = BUTTON_PREFIX .. tostring(platform_id),
     caption = caption,
     style = style_name,
     tags = { platform_index = platform_id },
@@ -203,22 +228,20 @@ local function add_row(list_flow, style_name, caption, platform_id)
   btn.style.minimal_height = 24
   btn.style.maximal_height = 24
 
-  local mv = row.add{
+  row.add{
     type = "button",
-    name = MOVE_OPEN_PREFIX .. tostring(platform_id),
+    name = "sp-move-open",
     caption = "⋯",
     style = "tool_button",
     tooltip = {"", "Move to folder"},
-  }
-  mv.style.minimal_width  = 24
-  mv.style.maximal_width  = 24
-  mv.style.minimal_height = 24
-  mv.style.maximal_height = 24
+    tags = { action = "open_move_menu", platform_id = platform_id }
+  }.style.minimal_width = 24
 
   return row
 end
 
 local function build_platform_list(player, frame)
+  local st = ui_state(player.index)
   local m  = folder_model(player.index)
   local entries = collect_platforms(player.force)
 
@@ -230,29 +253,34 @@ local function build_platform_list(player, frame)
   list.style.vertically_stretchable   = true
   list.style.horizontally_stretchable = true
 
-  -- Render folders
+  -- Folders
   for _, fid in ipairs(m.order) do
     local f = m.folders[fid]
     if f then
       local bar = list.add{ type = "flow", direction = "horizontal" }
-      local toggle = bar.add{
-        type = "sprite-button", name = FOLDER_TOGGLE_PREFIX .. fid,
+
+      bar.add{
+        type   = "sprite-button",
         sprite = f.expanded and "utility/collapse" or "utility/expand",
-        style = "frame_action_button", tooltip = {"", f.expanded and "Collapse" or "Expand"}
-      }
-      toggle.style.minimal_width  = 24
-      toggle.style.maximal_width  = 24
+        style  = "frame_action_button",
+        tooltip = {"", f.expanded and "Collapse" or "Expand"},
+        tags   = { action = "toggle_folder", folder_id = fid }
+      }.style.minimal_width = 24
+
       local head = bar.add{
-        type = "button", name = FOLDER_ROW_PREFIX .. fid,
+        type = "button",
         caption = "  " .. (f.name or ("Folder " .. fid)),
         style = "button",
         tooltip = {"", "Folder: ", f.name}
       }
       head.style.horizontally_stretchable = true
+
       bar.add{
-        type = "sprite-button", name = FOLDER_DELETE_PREFIX .. fid,
-        sprite = "utility/close_fat", style = "frame_action_button",
-        tooltip = {"", "Delete folder"}
+        type   = "sprite-button",
+        sprite = "utility/close_fat",
+        style  = "frame_action_button",
+        tooltip = {"", "Delete folder"},
+        tags   = { action = "delete_folder", folder_id = fid }
       }
 
       if f.expanded then
@@ -267,14 +295,11 @@ local function build_platform_list(player, frame)
     end
   end
 
-  -- Unsorted section header: spacer + label
+  -- Unsorted section
   do
     local bar = list.add{ type = "flow", direction = "horizontal" }
-    local spacer = bar.add{ type = "empty-widget", name = "sp-unsorted-spacer" }
-    spacer.style.minimal_width = 24
-    spacer.style.maximal_width = 24
-    spacer.style.minimal_height = 1
-    spacer.style.maximal_height = 1
+    local spacer = bar.add{ type = "empty-widget" }
+    spacer.style.minimal_width = 24; spacer.style.maximal_width = 24
     local label = bar.add{ type = "label", caption = "  Unsorted", style = "subheader_caption_label" }
     label.style.horizontally_stretchable = true
   end
@@ -287,29 +312,21 @@ local function build_platform_list(player, frame)
     end
   end
 
-  -- Apply sizes/scroll
   apply_platform_button_size(player)
   apply_ui_state(player)
 end
 
 local function build_platform_ui(player)
-  destroy_move_menu(player)
-
-  local frame = player.gui.screen.add{
-    type = "frame", name = UI_NAME, direction = "vertical"
-  }
+  local frame = player.gui.screen.add{ type = "frame", name = UI_NAME, direction = "vertical" }
   frame.auto_center = true
 
-  -- Header
   local header = frame.add{ type = "flow", direction = "vertical", name = "sp_header" }
 
-  -- Title
   local titlebar = header.add{ type = "flow", direction = "horizontal", name = "sp_titlebar" }
   titlebar.add{ type = "label", caption = {"gui.space-platforms-org-ui-title"}, style = "frame_title" }
   local drag = titlebar.add{ type = "empty-widget", name = "drag_handle", style = "draggable_space_header" }
   drag.style.horizontally_stretchable = true; drag.style.height = 24; drag.drag_target = frame
 
-  -- Controls row
   local controls = header.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
   controls.style.horizontal_spacing = 2
 
@@ -326,7 +343,6 @@ local function build_platform_ui(player)
   add_hdr_btn(HEADER_H_INC, "+H")
   controls.add{ type = "button", name = HEADER_ADD_FOLDER, caption = "+F", style = "tool_button", tooltip = {"", "Add folder"} }
 
-  -- List
   build_platform_list(player, frame)
 end
 
@@ -357,86 +373,45 @@ script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
-  local name = element.name
 
-  -- Window size
+  local name = element.name
+  local tags = element.tags or {}
+
+  -- Header size controls
   if name == HEADER_W_DEC then nudge_window_dims(player, -SIZE_INC, 0); return end
   if name == HEADER_W_INC then nudge_window_dims(player,  SIZE_INC, 0); return end
   if name == HEADER_H_DEC then nudge_window_dims(player, 0, -SIZE_INC); return end
   if name == HEADER_H_INC then nudge_window_dims(player, 0,  SIZE_INC); return end
-
-  -- Add folder
   if name == HEADER_ADD_FOLDER then add_folder(player, nil); rebuild_ui(player); return end
 
-  -- Folder toggle
-  do
-    local fid = name:match("^"..FOLDER_TOGGLE_PREFIX.."(%d+)$")
-    if fid then
-      fid = tonumber(fid)
-      local m = folder_model(player.index)
-      local f = m.folders[fid]; if not f then return end
-      f.expanded = not f.expanded
-      rebuild_ui(player)
-      return
-    end
+  -- Tagged actions (folders / move)
+  if tags.action == "toggle_folder" and tags.folder_id then
+    local m = folder_model(player.index)
+    local f = m.folders[tags.folder_id]; if not f then return end
+    f.expanded = not f.expanded
+    rebuild_ui(player); return
   end
 
-  -- Folder delete
-  do
-    local fid = name:match("^"..FOLDER_DELETE_PREFIX.."(%d+)$")
-    if fid then
-      delete_folder(player, tonumber(fid))
-      rebuild_ui(player)
-      return
-    end
+  if tags.action == "delete_folder" and tags.folder_id then
+    delete_folder(player, tags.folder_id)
+    rebuild_ui(player); return
   end
 
-  -- Open move-to menu
-  do
-    local pid = name:match("^"..MOVE_OPEN_PREFIX.."(%d+)$")
-    if pid then
-      pid = tonumber(pid)
-      local menu = player.gui.screen[MOVE_MENU_NAME]; if menu and menu.valid then menu.destroy() end
-      menu = player.gui.screen.add{ type = "frame", name = MOVE_MENU_NAME, direction = "vertical" }
-      menu.auto_center = true
-      local m = folder_model(player.index)
-      for _, fid in ipairs(m.order) do
-        local f = m.folders[fid]
-        if f then
-          menu.add{
-            type = "button",
-            name = MOVE_TARGET_PREFIX .. fid .. "-" .. pid,
-            caption = f.name, style = "button"
-          }
-        end
-      end
-      menu.add{ type = "button", name = MOVE_TARGET_PREFIX .. "none-" .. pid, caption = "(Unsorted)", style = "button" }
-      return
-    end
+  if tags.action == "open_move_menu" and tags.platform_id then
+    open_move_menu(player, tags.platform_id); return
   end
 
-  -- Choose move target
-  do
-    local fid, pid = name:match("^"..MOVE_TARGET_PREFIX.."([^%-]+)%-(%d+)$")
-    if fid and pid then
-      pid = tonumber(pid)
-      if fid == "none" then
-        assign_platform(player, pid, nil)
-      else
-        assign_platform(player, pid, tonumber(fid))
-      end
-      local menu = player.gui.screen[MOVE_MENU_NAME]; if menu and menu.valid then menu.destroy() end
-      rebuild_ui(player)
-      return
-    end
+  if tags.action == "move_to_folder" and tags.platform_id and tags.folder_id then
+    local fid = (tags.folder_id == UNSORTED_ID) and nil or tags.folder_id
+    assign_platform(player, tags.platform_id, fid)
+    local menu = player.gui.screen[MOVE_MENU_NAME]; if menu and menu.valid then menu.destroy() end
+    rebuild_ui(player); return
   end
 
-  -- Platform selection (open view)
-  if name:sub(1, #BUTTON_PREFIX) == BUTTON_PREFIX or (element.tags and element.tags.platform_index) then
-    local pid = element.tags and element.tags.platform_index
-    if not pid then pid = tonumber(name:sub(#BUTTON_PREFIX + 1)) end
+  -- Platform selection (open platform view)
+  if name:sub(1, #BUTTON_PREFIX) == BUTTON_PREFIX or (tags.platform_index) then
+    local pid = tags.platform_index or tonumber(name:sub(#BUTTON_PREFIX + 1))
     if not pid then return end
-
     local plat
     if player.force and player.force.valid and player.force.platforms then
       for _, p in pairs(player.force.platforms) do
