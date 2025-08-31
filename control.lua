@@ -60,14 +60,27 @@ local function folder_model(pi)
   return m
 end
 
+-- ---------- Utilities ----------
+
+local function element_has_ancestor_named(el, name)
+  local cur = el
+  while cur do
+    if cur.name == name then return true end
+    cur = cur.parent
+  end
+  return false
+end
+
 -- ---------- UI geometry ----------
 
 local function capture_ui_state(player)
   local st = ui_state(player.index)
   local frame = player.gui.screen[UI_NAME]
   if frame and frame.valid then
-    st.w = tonumber(frame.style.minimal_width) or st.w
-    st.h = tonumber(frame.style.minimal_height) or st.h
+    local w = tonumber(frame.style.minimal_width)
+    local h = tonumber(frame.style.minimal_height)
+    if w then st.w = w end
+    if h then st.h = h end
     local loc = frame.location
     if loc and loc.x and loc.y then st.loc = { x = loc.x, y = loc.y } end
     local scroll = frame["platform_scroll"]
@@ -83,9 +96,20 @@ local function apply_ui_state(player)
   local st = ui_state(player.index)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
-  if st.w then frame.style.minimal_width  = st.w end
-  if st.h then frame.style.minimal_height = st.h end
-  if st.loc and st.loc.x and st.loc.y then frame.location = { x = st.loc.x, y = st.loc.y } end
+
+  -- lock size so our bottom-right math is exact
+  frame.style.minimal_width  = st.w
+  frame.style.maximal_width  = st.w
+  frame.style.minimal_height = st.h
+  frame.style.maximal_height = st.h
+
+  if st.loc and st.loc.x and st.loc.y then
+    frame.location = { x = st.loc.x, y = st.loc.y }
+  else
+    -- First open only: center once; subsequent rebuilds preserve location.
+    frame.auto_center = true
+  end
+
   local scroll = frame["platform_scroll"]
   if scroll and scroll.valid then
     local sb = scroll.vertical_scrollbar
@@ -306,7 +330,7 @@ local function ensure_resizer(player)
     direction = "vertical",
   }
 
-  -- clean 16x16 square, no chrome
+  -- clean 16x16 square, minimal chrome
   handle.style.padding = 0
   handle.style.top_padding = 0
   handle.style.right_padding = 0
@@ -325,6 +349,12 @@ local function ensure_resizer(player)
 
   position_resizer(player)
   return handle
+end
+
+local function raise_resizer(player)
+  -- Recreate to bring on top of the z-order when the main frame gains focus.
+  destroy_resizer(player)
+  ensure_resizer(player)
 end
 
 -- ---------- UI build ----------
@@ -456,10 +486,13 @@ local function build_platform_ui(player)
   destroy_move_menu(player)
   destroy_rename_menu(player)
   destroy_delete_menu(player)
-  destroy_resizer(player)
+  -- Do not destroy resizer here; we want it to exist even before list is built.
 
   local frame = player.gui.screen.add{ type = "frame", name = UI_NAME, direction = "vertical" }
-  frame.auto_center = true
+
+  -- Only center if we have no prior location recorded.
+  local st = ui_state(player.index)
+  frame.auto_center = (st.loc == nil)
 
   -- Header
   local header = frame.add{ type = "flow", direction = "vertical", name = "sp_header" }
@@ -478,16 +511,15 @@ local function build_platform_ui(player)
   -- List
   build_platform_list(player, frame)
 
-  -- Apply persisted size/pos and show resizer
+  -- Apply persisted size/pos and show resizer (and bring it on top)
   apply_ui_state(player)
-  ensure_resizer(player)
+  raise_resizer(player)
 end
 
 local function rebuild_ui(player)
   capture_ui_state(player)
   local existing = player.gui.screen[UI_NAME]
   if existing and existing.valid then existing.destroy() end
-  destroy_resizer(player)
   build_platform_ui(player)
 end
 
@@ -498,7 +530,7 @@ local function toggle_platform_ui(player, refresh)
     else
       capture_ui_state(player)
       existing.destroy()
-      destroy_resizer(player)
+      -- keep resizer alive for next open
     end
   else
     build_platform_ui(player)
@@ -515,6 +547,11 @@ script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
+
+  -- Any click inside our window: ensure the resizer is present & on top.
+  if element_has_ancestor_named(element, UI_NAME) then
+    raise_resizer(player)
+  end
 
   local name = element.name
   local tags = element.tags or {}
@@ -632,11 +669,11 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
   if not (element and element.valid and player) then return end
 
   if element.name == UI_NAME then
-    -- Window moved: keep handle aligned
-    position_resizer(player)
-    -- persist location
+    -- Window moved: keep handle aligned, persist location
     local st = ui_state(player.index)
     st.loc = { x = element.location.x, y = element.location.y }
+    position_resizer(player)
+    raise_resizer(player)
     return
   end
 
@@ -655,10 +692,15 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
 
     local st = ui_state(player.index)
     st.w, st.h = new_w, new_h
+
+    -- lock size exactly to avoid drift
     frame.style.minimal_width  = new_w
+    frame.style.maximal_width  = new_w
     frame.style.minimal_height = new_h
+    frame.style.maximal_height = new_h
 
     position_resizer(player)
+    raise_resizer(player)
     return
   end
 end)
@@ -673,7 +715,7 @@ script.on_event(defines.events.on_gui_closed, function(event)
     destroy_move_menu(player)
     destroy_rename_menu(player)
     destroy_delete_menu(player)
-    destroy_resizer(player)
+    -- keep resizer available across toggles (do not destroy)
   elseif element and (element.name == MOVE_MENU_NAME or element.name == RENAME_MENU_NAME or element.name == DELETE_MENU_NAME) then
     element.destroy()
   end
@@ -696,7 +738,7 @@ end)
 local function rebuild_all_open()
   for _, p in pairs(game.connected_players) do
     local frame = p.gui.screen[UI_NAME]
-    if frame and frame.valid then rebuild_ui(p) end
+    if frame and frame.valid then rebuild_ui(p) else raise_resizer(p) end
   end
 end
 
