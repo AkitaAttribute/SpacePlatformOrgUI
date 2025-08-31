@@ -14,6 +14,12 @@ local HEADER_ADD_FOLDER = "sp-add-folder"
 local MOVE_MENU_NAME = "sp-move-menu"
 local UNSORTED_ID = -1  -- sentinel for "(Unsorted)"
 
+-- Rename dialog
+local RENAME_MENU_NAME  = "sp-rename-menu"
+local RENAME_INPUT_NAME = "sp-rename-input"
+local RENAME_OK_NAME    = "sp-rename-ok"
+local RENAME_CANCEL_NAME= "sp-rename-cancel"
+
 -- Window size step in pixels
 local SIZE_INC = 20
 
@@ -170,11 +176,23 @@ local function assign_platform(player, platform_id, folder_id) -- folder_id may 
   m.platform_folder[platform_id] = folder_id
 end
 
--- ---------- Move menu ----------
+local function folder_child_count(m, folder_id, entries)
+  local n = 0
+  for _, e in ipairs(entries) do
+    if m.platform_folder[e.id] == folder_id then n = n + 1 end
+  end
+  return n
+end
+
+-- ---------- Menus ----------
 
 local function destroy_move_menu(player)
   local menu = player.gui.screen[MOVE_MENU_NAME]
   if menu and menu.valid then menu.destroy() end
+end
+local function destroy_rename_menu(player)
+  local dlg = player.gui.screen[RENAME_MENU_NAME]
+  if dlg and dlg.valid then dlg.destroy() end
 end
 
 local function open_move_menu(player, platform_id)
@@ -184,13 +202,12 @@ local function open_move_menu(player, platform_id)
 
   local m = folder_model(player.index)
 
-  -- Create a unique-named button for each folder target
   for _, fid in ipairs(m.order) do
     local f = m.folders[fid]
     if f then
       menu.add{
         type = "button",
-        name = "sp-move-target-" .. fid .. "-" .. platform_id, -- unique name
+        name = "sp-move-target-" .. fid .. "-" .. platform_id, -- unique
         caption = f.name,
         style = "button",
         tags = { action = "move_to_folder", folder_id = fid, platform_id = platform_id }
@@ -198,7 +215,6 @@ local function open_move_menu(player, platform_id)
     end
   end
 
-  -- Unsorted target (unique name as well)
   menu.add{
     type = "button",
     name = "sp-move-target-none-" .. platform_id,
@@ -206,6 +222,57 @@ local function open_move_menu(player, platform_id)
     style  = "button",
     tags   = { action = "move_to_folder", folder_id = UNSORTED_ID, platform_id = platform_id }
   }
+end
+
+local function open_rename_menu(player, folder_id)
+  destroy_rename_menu(player)
+  local m = folder_model(player.index)
+  local f = m.folders[folder_id]; if not f then return end
+
+  local dlg = player.gui.screen.add{ type = "frame", name = RENAME_MENU_NAME, direction = "vertical" }
+  dlg.auto_center = true
+
+  dlg.add{ type = "label", caption = "Rename folder:", style = "subheader_caption_label" }
+  local tf = dlg.add{ type = "textfield", name = RENAME_INPUT_NAME, text = f.name or "" }
+  tf.style.minimal_width = 240
+  local row = dlg.add{ type = "flow", direction = "horizontal" }
+  row.add{
+    type = "button", name = RENAME_OK_NAME, caption = "OK", style = "confirm_button",
+    tags = { action = "rename_ok", folder_id = folder_id }
+  }
+  row.add{
+    type = "button", name = RENAME_CANCEL_NAME, caption = "Cancel", style = "button",
+    tags = { action = "rename_cancel" }
+  }
+  tf.focus()
+  tf.select_all()
+end
+
+local function apply_rename_from_dialog(player, folder_id)
+  local dlg = player.gui.screen[RENAME_MENU_NAME]
+  if not (dlg and dlg.valid) then return end
+  local tf = dlg[RENAME_INPUT_NAME]
+  if not (tf and tf.valid) then return end
+  local newname = (tf.text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  if newname ~= "" then
+    local m = folder_model(player.index)
+    local f = m.folders[folder_id]
+    if f then f.name = newname end
+  end
+  destroy_rename_menu(player)
+  -- keep the same scroll/pos, rebuild to refresh captions
+  local frame = player.gui.screen[UI_NAME]
+  if frame and frame.valid then frame.destroy() end
+  -- Use standard rebuild so sizes/scroll persist
+  local function rebuild_ui(p)
+    local existing = p.gui.screen[UI_NAME]
+    if existing and existing.valid then existing.destroy() end
+    -- fall through to builder
+  end
+  -- we already destroyed the frame above; just build fresh:
+  local function build_platform_ui(p)
+    -- forward declare; real one is below; placeholder to satisfy Lua upvalues
+  end
 end
 
 -- ---------- UI build ----------
@@ -232,7 +299,7 @@ local function add_row(list_flow, style_name, caption, platform_id)
 
   local mv = row.add{
     type = "button",
-    name = "sp-move-open-" .. platform_id, -- unique name
+    name = "sp-move-open-" .. platform_id, -- unique
     caption = "⋯",
     style = "tool_button",
     tooltip = {"", "Move to folder"},
@@ -247,6 +314,7 @@ local function add_row(list_flow, style_name, caption, platform_id)
 end
 
 local function build_platform_list(player, frame)
+  local st = ui_state(player.index)
   local m  = folder_model(player.index)
   local entries = collect_platforms(player.force)
 
@@ -262,6 +330,8 @@ local function build_platform_list(player, frame)
   for _, fid in ipairs(m.order) do
     local f = m.folders[fid]
     if f then
+      local count = folder_child_count(m, fid, entries)
+
       local bar = list.add{ type = "flow", direction = "horizontal" }
 
       local tog = bar.add{
@@ -276,12 +346,22 @@ local function build_platform_list(player, frame)
 
       local head = bar.add{
         type = "button",
-        caption = "  " .. (f.name or ("Folder " .. fid)),
+        caption = string.format("  %s (%d)", (f.name or ("Folder " .. fid)), count),
         style = "button",
         tooltip = {"", "Folder: ", f.name}
       }
       head.style.horizontally_stretchable = true
 
+      -- Rename button (✎)
+      local ren = bar.add{
+        type = "button", caption = "✎", style = "tool_button",
+        tooltip = {"", "Rename folder"},
+        tags = { action = "open_rename_menu", folder_id = fid }
+      }
+      ren.style.minimal_width  = 24
+      ren.style.maximal_width  = 24
+
+      -- Delete button
       bar.add{
         type   = "sprite-button",
         sprite = "utility/close_fat",
@@ -324,6 +404,9 @@ local function build_platform_list(player, frame)
 end
 
 local function build_platform_ui(player)
+  destroy_move_menu(player)
+  destroy_rename_menu(player)
+
   local frame = player.gui.screen.add{ type = "frame", name = UI_NAME, direction = "vertical" }
   frame.auto_center = true
 
@@ -391,7 +474,7 @@ script.on_event(defines.events.on_gui_click, function(event)
   if name == HEADER_H_INC then nudge_window_dims(player, 0,  SIZE_INC); return end
   if name == HEADER_ADD_FOLDER then add_folder(player, nil); rebuild_ui(player); return end
 
-  -- Tagged actions (folders / move)
+  -- Tagged actions (folders / move / rename)
   if tags.action == "toggle_folder" and tags.folder_id then
     local m = folder_model(player.index)
     local f = m.folders[tags.folder_id]; if not f then return end
@@ -413,6 +496,42 @@ script.on_event(defines.events.on_gui_click, function(event)
     assign_platform(player, tags.platform_id, fid)
     destroy_move_menu(player)
     rebuild_ui(player); return
+  end
+
+  if tags.action == "open_rename_menu" and tags.folder_id then
+    open_rename_menu(player, tags.folder_id); return
+  end
+
+  if name == RENAME_OK_NAME and element.parent and element.parent.parent
+     and element.parent.parent.name == RENAME_MENU_NAME then
+    local dlg = element.parent.parent
+    local tf = dlg[RENAME_INPUT_NAME]
+    if tf and tf.valid then
+      local newname = (tf.text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+      if newname ~= "" then
+        local m = folder_model(player.index)
+        local fid = (element.tags and element.tags.folder_id) or (element.parent and element.parent.tags and element.parent.tags.folder_id)
+        fid = fid or (element.tags and element.tags.folder_id)
+      end
+    end
+    -- Retrieve folder_id from button tags
+    local fid = element.tags and element.tags.folder_id
+    if fid then
+      local m = folder_model(player.index)
+      local f = m.folders[fid]
+      if f then
+        local dlg = player.gui.screen[RENAME_MENU_NAME]
+        local tf = dlg and dlg[RENAME_INPUT_NAME]
+        local newname = tf and tf.valid and (tf.text or ""):gsub("^%s+", ""):gsub("%s+$", "") or ""
+        if newname ~= "" then f.name = newname end
+      end
+    end
+    destroy_rename_menu(player)
+    rebuild_ui(player); return
+  end
+
+  if name == RENAME_CANCEL_NAME then
+    destroy_rename_menu(player); return
   end
 
   -- Platform selection (open platform view)
@@ -437,6 +556,68 @@ script.on_event(defines.events.on_gui_click, function(event)
   end
 end)
 
+-- Confirm with Enter in the rename textfield
+script.on_event(defines.events.on_gui_confirmed, function(event)
+  local element = event.element
+  local player  = game.get_player(event.player_index)
+  if not (element and element.valid and player) then return end
+  if element.name ~= RENAME_INPUT_NAME then return end
+
+  local dlg = player.gui.screen[RENAME_MENU_NAME]
+  if not (dlg and dlg.valid) then return end
+  -- Find folder_id from OK button tags
+  local ok = dlg.children[#dlg.children] and dlg.children[#dlg.children][RENAME_OK_NAME]
+  -- Above is a bit brittle; instead, store folder_id in dialog tags when created
+end)
+
+-- We store folder_id on the dialog itself for robust confirm handling
+script.on_event(defines.events.on_gui_opened, function() end) -- placeholder
+
+-- Overwrite rename open to set dialog tags (redefine after confirm handler)
+local function open_rename_menu_impl(player, folder_id)
+  destroy_rename_menu(player)
+  local m = folder_model(player.index)
+  local f = m.folders[folder_id]; if not f then return end
+
+  local dlg = player.gui.screen.add{ type = "frame", name = RENAME_MENU_NAME, direction = "vertical", tags = { folder_id = folder_id } }
+  dlg.auto_center = true
+
+  dlg.add{ type = "label", caption = "Rename folder:", style = "subheader_caption_label" }
+  local tf = dlg.add{ type = "textfield", name = RENAME_INPUT_NAME, text = f.name or "" }
+  tf.style.minimal_width = 240
+  local row = dlg.add{ type = "flow", direction = "horizontal", tags = { folder_id = folder_id } }
+  row.add{
+    type = "button", name = RENAME_OK_NAME, caption = "OK", style = "confirm_button",
+    tags = { folder_id = folder_id }
+  }
+  row.add{
+    type = "button", name = RENAME_CANCEL_NAME, caption = "Cancel", style = "button"
+  }
+  tf.focus()
+  tf.select_all()
+end
+
+-- Override earlier stub
+open_rename_menu = open_rename_menu_impl
+
+-- Handle Enter in textfield using dialog tag
+script.on_event(defines.events.on_gui_confirmed, function(event)
+  local element = event.element
+  local player  = game.get_player(event.player_index)
+  if not (element and element.valid and player) then return end
+  if element.name ~= RENAME_INPUT_NAME then return end
+  local dlg = player.gui.screen[RENAME_MENU_NAME]
+  if not (dlg and dlg.valid) then return end
+  local fid = dlg.tags and dlg.tags.folder_id
+  if not fid then return end
+  local m = folder_model(player.index)
+  local f = m.folders[fid]; if not f then return end
+  local newname = (element.text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  if newname ~= "" then f.name = newname end
+  destroy_rename_menu(player)
+  rebuild_ui(player)
+end)
+
 script.on_event(defines.events.on_gui_closed, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
@@ -445,7 +626,8 @@ script.on_event(defines.events.on_gui_closed, function(event)
     capture_ui_state(player)
     element.destroy()
     destroy_move_menu(player)
-  elseif element and element.name == MOVE_MENU_NAME then
+    destroy_rename_menu(player)
+  elseif element and (element.name == MOVE_MENU_NAME or element.name == RENAME_MENU_NAME) then
     element.destroy()
   end
 end)
