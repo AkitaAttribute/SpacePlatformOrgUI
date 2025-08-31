@@ -183,23 +183,25 @@ local function open_move_menu(player, platform_id)
   menu.auto_center = true
 
   local m = folder_model(player.index)
-  -- Folders
+
+  -- Create a unique-named button for each folder target
   for _, fid in ipairs(m.order) do
     local f = m.folders[fid]
     if f then
       menu.add{
         type = "button",
-        name = "sp-move-target",
+        name = "sp-move-target-" .. fid .. "-" .. platform_id, -- unique name
         caption = f.name,
         style = "button",
         tags = { action = "move_to_folder", folder_id = fid, platform_id = platform_id }
       }
     end
   end
-  -- Unsorted
+
+  -- Unsorted target (unique name as well)
   menu.add{
     type = "button",
-    name = "sp-move-target",
+    name = "sp-move-target-none-" .. platform_id,
     caption = "(Unsorted)",
     style  = "button",
     tags   = { action = "move_to_folder", folder_id = UNSORTED_ID, platform_id = platform_id }
@@ -228,20 +230,23 @@ local function add_row(list_flow, style_name, caption, platform_id)
   btn.style.minimal_height = 24
   btn.style.maximal_height = 24
 
-  row.add{
+  local mv = row.add{
     type = "button",
-    name = "sp-move-open",
+    name = "sp-move-open-" .. platform_id, -- unique name
     caption = "⋯",
     style = "tool_button",
     tooltip = {"", "Move to folder"},
     tags = { action = "open_move_menu", platform_id = platform_id }
-  }.style.minimal_width = 24
+  }
+  mv.style.minimal_width  = 24
+  mv.style.maximal_width  = 24
+  mv.style.minimal_height = 24
+  mv.style.maximal_height = 24
 
   return row
 end
 
 local function build_platform_list(player, frame)
-  local st = ui_state(player.index)
   local m  = folder_model(player.index)
   local entries = collect_platforms(player.force)
 
@@ -259,13 +264,15 @@ local function build_platform_list(player, frame)
     if f then
       local bar = list.add{ type = "flow", direction = "horizontal" }
 
-      bar.add{
+      local tog = bar.add{
         type   = "sprite-button",
         sprite = f.expanded and "utility/collapse" or "utility/expand",
         style  = "frame_action_button",
         tooltip = {"", f.expanded and "Collapse" or "Expand"},
         tags   = { action = "toggle_folder", folder_id = fid }
-      }.style.minimal_width = 24
+      }
+      tog.style.minimal_width  = 24
+      tog.style.maximal_width  = 24
 
       local head = bar.add{
         type = "button",
@@ -404,7 +411,7 @@ script.on_event(defines.events.on_gui_click, function(event)
   if tags.action == "move_to_folder" and tags.platform_id and tags.folder_id then
     local fid = (tags.folder_id == UNSORTED_ID) and nil or tags.folder_id
     assign_platform(player, tags.platform_id, fid)
-    local menu = player.gui.screen[MOVE_MENU_NAME]; if menu and menu.valid then menu.destroy() end
+    destroy_move_menu(player)
     rebuild_ui(player); return
   end
 
@@ -437,7 +444,7 @@ script.on_event(defines.events.on_gui_closed, function(event)
   if element and element.name == UI_NAME then
     capture_ui_state(player)
     element.destroy()
-    local menu = player.gui.screen[MOVE_MENU_NAME]; if menu and menu.valid then menu.destroy() end
+    destroy_move_menu(player)
   elseif element and element.name == MOVE_MENU_NAME then
     element.destroy()
   end
