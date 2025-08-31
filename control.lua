@@ -26,9 +26,9 @@ local RESIZE_HANDLE_SIZE = 16  -- px square
 local MIN_W, MIN_H, MAX_W, MAX_H = 360, 320, 1400, 1400
 
 -- Empirical offsets from frame's top-left to its visual bottom-right.
--- These account for the frame chrome and titlebar so the handle hugs the visible corner.
-local FRAME_OFF_X = 24   -- right-side chrome (theme-dependent, tuned)
-local FRAME_OFF_Y = 40   -- titlebar + bottom chrome (theme-dependent, tuned)
+-- These account for the frame chrome/titlebar so the handle hugs the visible corner.
+local FRAME_OFF_X = 24
+local FRAME_OFF_Y = 40
 
 -- ---------- State ----------
 
@@ -50,12 +50,6 @@ local function ui_state(pi)
 end
 
 -- Folder model (per player)
--- global.spfolders[player_index] = {
---   next_id = 1,
---   folders = { [id] = { name="Folder N", order=int, expanded=true } },
---   order = { id1, id2, ... },
---   platform_folder = { [platform_index] = folder_id or nil },
--- }
 local function folder_model(pi)
   local g = get_global()
   g.spfolders = g.spfolders or {}
@@ -104,7 +98,7 @@ local function apply_ui_state(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
 
-  -- Lock size so bottom-right computations are exact
+  -- lock size so bottom-right math is exact
   frame.style.minimal_width  = st.w
   frame.style.maximal_width  = st.w
   frame.style.minimal_height = st.h
@@ -231,7 +225,7 @@ local function open_move_menu(player, platform_id)
     if f then
       menu.add{
         type = "button",
-        name = "sp-move-target-" .. fid .. "-" .. platform_id, -- unique
+        name = "sp-move-target-" .. fid .. "-" .. platform_id,
         caption = f.name,
         style = "button",
         tags = { action = "move_to_folder", folder_id = fid, platform_id = platform_id }
@@ -263,17 +257,10 @@ local function open_rename_menu(player, folder_id)
   tf.style.minimal_width = 240
 
   local row = dlg.add{ type = "flow", direction = "horizontal" }
-  row.add{
-    type = "button", name = "sp-rename-ok", caption = "OK", style = "confirm_button",
-    tags = { action = "rename_ok" }
-  }
-  row.add{
-    type = "button", name = "sp-rename-cancel", caption = "Cancel", style = "button",
-    tags = { action = "rename_cancel" }
-  }
+  row.add{ type = "button", name = "sp-rename-ok", caption = "OK", style = "confirm_button", tags = { action = "rename_ok" } }
+  row.add{ type = "button", name = "sp-rename-cancel", caption = "Cancel", style = "button", tags = { action = "rename_cancel" } }
 
-  tf.focus()
-  tf.select_all()
+  tf.focus(); tf.select_all()
 end
 
 local function open_delete_confirm(player, folder_id)
@@ -292,14 +279,8 @@ local function open_delete_confirm(player, folder_id)
     style = "subheader_caption_label"
   }
   local row = dlg.add{ type = "flow", direction = "horizontal" }
-  row.add{
-    type = "button", name = "sp-delete-ok", caption = "Delete", style = "confirm_button",
-    tags = { action = "delete_confirm_ok" }
-  }
-  row.add{
-    type = "button", name = "sp-delete-cancel", caption = "Cancel", style = "button",
-    tags = { action = "delete_confirm_cancel" }
-  }
+  row.add{ type = "button", name = "sp-delete-ok", caption = "Delete", style = "confirm_button", tags = { action = "delete_confirm_ok" } }
+  row.add{ type = "button", name = "sp-delete-cancel", caption = "Cancel", style = "button", tags = { action = "delete_confirm_cancel" } }
 end
 
 -- ---------- Resize handle ----------
@@ -310,7 +291,6 @@ local function destroy_resizer(player)
 end
 
 local function position_resizer(player)
-  -- Align to the visual bottom-right corner of our frame.
   local frame  = player.gui.screen[UI_NAME]
   local handle = player.gui.screen[RESIZE_HANDLE_NAME]
   if not (frame and frame.valid and handle and handle.valid) then return end
@@ -335,24 +315,13 @@ local function ensure_resizer(player)
     return handle
   end
 
-  handle = player.gui.screen.add{
-    type = "frame",
-    name = RESIZE_HANDLE_NAME,
-    direction = "vertical",
-  }
-
-  -- Clean 16x16 square, minimal chrome
+  handle = player.gui.screen.add{ type = "frame", name = RESIZE_HANDLE_NAME, direction = "vertical" }
   handle.style.padding = 0
-  handle.style.top_padding = 0
-  handle.style.right_padding = 0
-  handle.style.bottom_padding = 0
-  handle.style.left_padding = 0
   handle.style.minimal_width  = RESIZE_HANDLE_SIZE
   handle.style.minimal_height = RESIZE_HANDLE_SIZE
   handle.style.maximal_width  = RESIZE_HANDLE_SIZE
   handle.style.maximal_height = RESIZE_HANDLE_SIZE
 
-  -- Draggable area
   local drag = handle.add{ type = "empty-widget", style = "draggable_space" }
   drag.style.width  = RESIZE_HANDLE_SIZE
   drag.style.height = RESIZE_HANDLE_SIZE
@@ -360,6 +329,21 @@ local function ensure_resizer(player)
 
   position_resizer(player)
   return handle
+end
+
+local function raise_resizer(player)
+  -- Recreate only on clicks (never during drag) to bring it above the frame.
+  local loc
+  do
+    local h = player.gui.screen[RESIZE_HANDLE_NAME]
+    if h and h.valid then loc = h.location end
+  end
+  destroy_resizer(player)
+  local h = ensure_resizer(player)
+  if loc and h and h.valid then
+    h.location = loc
+  end
+  position_resizer(player)
 end
 
 -- ---------- UI build ----------
@@ -386,7 +370,7 @@ local function add_row(list_flow, style_name, caption, platform_id)
 
   local mv = row.add{
     type = "button",
-    name = "sp-move-open-" .. platform_id, -- unique
+    name = "sp-move-open-" .. platform_id,
     caption = "⋯",
     style = "tool_button",
     tooltip = {"", "Move to folder"},
@@ -430,7 +414,6 @@ local function build_platform_list(player, frame)
       tog.style.minimal_width  = 24
       tog.style.maximal_width  = 24
 
-      -- Folder header uses TAN style
       local head = bar.add{
         type = "button",
         caption = string.format("  %s (%d)", (f.name or ("Folder " .. fid)), count),
@@ -439,7 +422,6 @@ local function build_platform_list(player, frame)
       }
       head.style.horizontally_stretchable = true
 
-      -- Rename (✎)
       local ren = bar.add{
         type = "button", caption = "✎", style = "tool_button",
         tooltip = {"", "Rename folder"},
@@ -448,7 +430,6 @@ local function build_platform_list(player, frame)
       ren.style.minimal_width  = 24
       ren.style.maximal_width  = 24
 
-      -- Delete (opens confirmation)
       bar.add{
         type   = "sprite-button",
         sprite = "utility/close_fat",
@@ -460,7 +441,6 @@ local function build_platform_list(player, frame)
       if f.expanded then
         for _, e in ipairs(entries) do
           if m.platform_folder[e.id] == fid then
-            -- Platforms are always the normal button style
             add_row(list, "button", e.caption, e.id)
           end
         end
@@ -494,7 +474,6 @@ local function build_platform_ui(player)
 
   local frame = player.gui.screen.add{ type = "frame", name = UI_NAME, direction = "vertical" }
 
-  -- Only center if no prior location recorded
   local st = ui_state(player.index)
   frame.auto_center = (st.loc == nil)
 
@@ -515,10 +494,12 @@ local function build_platform_ui(player)
   -- List
   build_platform_list(player, frame)
 
-  -- Apply persisted size/pos and ensure resizer exists/positioned
+  -- Persisted size/pos and ensure + place handle
   apply_ui_state(player)
   ensure_resizer(player)
   position_resizer(player)
+  -- Bring to front once on open (safe because not dragging yet)
+  raise_resizer(player)
 end
 
 local function rebuild_ui(player)
@@ -535,7 +516,7 @@ local function toggle_platform_ui(player, refresh)
     else
       capture_ui_state(player)
       existing.destroy()
-      destroy_resizer(player) -- hide handle when window is closed
+      destroy_resizer(player)
     end
   else
     build_platform_ui(player)
@@ -553,10 +534,9 @@ script.on_event(defines.events.on_gui_click, function(event)
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
 
-  -- If our window is interacted with, make sure handle exists (no re-create if already present)
+  -- Any click inside our window: re-raise handle (safe; not during drag).
   if element_has_ancestor_named(element, UI_NAME) then
-    ensure_resizer(player)
-    position_resizer(player)
+    raise_resizer(player)
   end
 
   local name = element.name
