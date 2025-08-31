@@ -94,6 +94,18 @@ local function apply_ui_state(player)
   end
 end
 
+-- Find the button inside a row flow
+local function get_row_button(row)
+  if not (row and row.valid and row.type == "flow") then return nil end
+  for _, c in ipairs(row.children) do
+    if c and c.valid and c.type == "button" and (c.tags and c.tags.platform_index) then
+      return c
+    end
+  end
+  return nil
+end
+
+-- Apply the configured width/height to all platform entry buttons in-place.
 local function apply_platform_button_size(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
@@ -101,9 +113,9 @@ local function apply_platform_button_size(player)
   local scroll = frame["platform_scroll"]
   local list = (scroll and scroll.valid) and scroll["platform_list"] or nil
   if not (list and list.valid) then return end
-  for _, child in ipairs(list.children) do
-    if child and child.valid and child.type == "flow" and child.tags and child.tags.kind == "row" then
-      local btn = child["row_btn"]
+  for _, row in ipairs(list.children) do
+    if row and row.valid and row.tags and row.tags.kind == "row" then
+      local btn = get_row_button(row)
       if btn and btn.valid then
         btn.style.minimal_width  = st.button_w
         btn.style.maximal_width  = st.button_w
@@ -149,11 +161,9 @@ end
 local function delete_folder(player, folder_id)
   local m = folder_model(player.index)
   if not m.folders[folder_id] then return end
-  -- Unassign any platforms in this folder
   for pid, fid in pairs(m.platform_folder) do
     if fid == folder_id then m.platform_folder[pid] = nil end
   end
-  -- Remove folder
   m.folders[folder_id] = nil
   for i, id in ipairs(m.order) do
     if id == folder_id then table.remove(m.order, i); break end
@@ -178,26 +188,21 @@ local function add_row(list_flow, style_name, caption, platform_id)
 
   local btn = row.add{
     type = "button",
-    name = BUTTON_PREFIX .. tostring(platform_id),
+    name = BUTTON_PREFIX .. tostring(platform_id),  -- keep this name for click handling
     caption = caption,
     style = style_name,
+    tags = { platform_index = platform_id },
   }
-  btn.name = BUTTON_PREFIX .. tostring(platform_id) -- (ensure exact)
   btn.style.horizontally_stretchable = true
   btn.style.top_padding    = 2
   btn.style.bottom_padding = 2
   btn.style.left_padding   = 6
   btn.style.right_padding  = 6
-  btn.name = BUTTON_PREFIX .. tostring(platform_id)
-  btn.tags = { platform_index = platform_id }
   btn.style.minimal_width  = 260
   btn.style.maximal_width  = 260
   btn.style.minimal_height = 24
   btn.style.maximal_height = 24
-  btn.name = "row_btn"  -- temporary, we re-reference by index
-  row["row_btn"] = btn
 
-  -- Move-to menu opener
   local mv = row.add{
     type = "button",
     name = MOVE_OPEN_PREFIX .. tostring(platform_id),
@@ -214,7 +219,6 @@ local function add_row(list_flow, style_name, caption, platform_id)
 end
 
 local function build_platform_list(player, frame)
-  local st = ui_state(player.index)
   local m  = folder_model(player.index)
   local entries = collect_platforms(player.force)
 
@@ -226,10 +230,7 @@ local function build_platform_list(player, frame)
   list.style.vertically_stretchable   = true
   list.style.horizontally_stretchable = true
 
-  local by_id = {}
-  for _, e in ipairs(entries) do by_id[e.id] = e end
-
-  -- Render folders in m.order
+  -- Render folders
   for _, fid in ipairs(m.order) do
     local f = m.folders[fid]
     if f then
@@ -248,14 +249,13 @@ local function build_platform_list(player, frame)
         tooltip = {"", "Folder: ", f.name}
       }
       head.style.horizontally_stretchable = true
-      local del = bar.add{
+      bar.add{
         type = "sprite-button", name = FOLDER_DELETE_PREFIX .. fid,
         sprite = "utility/close_fat", style = "frame_action_button",
         tooltip = {"", "Delete folder"}
       }
 
       if f.expanded then
-        -- platforms in this folder
         for _, e in ipairs(entries) do
           if m.platform_folder[e.id] == fid then
             local idx = #list.children + 1
@@ -267,17 +267,18 @@ local function build_platform_list(player, frame)
     end
   end
 
-  -- Unsorted section
+  -- Unsorted section header: spacer + label
   do
     local bar = list.add{ type = "flow", direction = "horizontal" }
-    local dummy = bar.add{
-      type = "sprite-button", name = "sp-unsorted-dummy",
-      sprite = "utility/empty_widget", style = "frame_action_button"
-    }
-    dummy.style.minimal_width = 24; dummy.style.maximal_width = 24
+    local spacer = bar.add{ type = "empty-widget", name = "sp-unsorted-spacer" }
+    spacer.style.minimal_width = 24
+    spacer.style.maximal_width = 24
+    spacer.style.minimal_height = 1
+    spacer.style.maximal_height = 1
     local label = bar.add{ type = "label", caption = "  Unsorted", style = "subheader_caption_label" }
     label.style.horizontally_stretchable = true
   end
+
   for _, e in ipairs(entries) do
     if not m.platform_folder[e.id] then
       local idx = #list.children + 1
@@ -286,7 +287,7 @@ local function build_platform_list(player, frame)
     end
   end
 
-  -- Apply persisted sizes/scroll
+  -- Apply sizes/scroll
   apply_platform_button_size(player)
   apply_ui_state(player)
 end
@@ -352,7 +353,6 @@ script.on_event("space-platform-org-ui-toggle", function(e)
   local p = game.get_player(e.player_index); if p then toggle_platform_ui(p) end
 end)
 
--- Click handling
 script.on_event(defines.events.on_gui_click, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
@@ -396,11 +396,10 @@ script.on_event(defines.events.on_gui_click, function(event)
     local pid = name:match("^"..MOVE_OPEN_PREFIX.."(%d+)$")
     if pid then
       pid = tonumber(pid)
-      destroy_move_menu(player)
-      local menu = player.gui.screen.add{ type = "frame", name = MOVE_MENU_NAME, direction = "vertical" }
+      local menu = player.gui.screen[MOVE_MENU_NAME]; if menu and menu.valid then menu.destroy() end
+      menu = player.gui.screen.add{ type = "frame", name = MOVE_MENU_NAME, direction = "vertical" }
       menu.auto_center = true
       local m = folder_model(player.index)
-      -- Targets: folders
       for _, fid in ipairs(m.order) do
         local f = m.folders[fid]
         if f then
@@ -411,7 +410,6 @@ script.on_event(defines.events.on_gui_click, function(event)
           }
         end
       end
-      -- Unsorted
       menu.add{ type = "button", name = MOVE_TARGET_PREFIX .. "none-" .. pid, caption = "(Unsorted)", style = "button" }
       return
     end
@@ -427,7 +425,7 @@ script.on_event(defines.events.on_gui_click, function(event)
       else
         assign_platform(player, pid, tonumber(fid))
       end
-      destroy_move_menu(player)
+      local menu = player.gui.screen[MOVE_MENU_NAME]; if menu and menu.valid then menu.destroy() end
       rebuild_ui(player)
       return
     end
@@ -439,7 +437,6 @@ script.on_event(defines.events.on_gui_click, function(event)
     if not pid then pid = tonumber(name:sub(#BUTTON_PREFIX + 1)) end
     if not pid then return end
 
-    -- switch to platform view
     local plat
     if player.force and player.force.valid and player.force.platforms then
       for _, p in pairs(player.force.platforms) do
@@ -458,7 +455,6 @@ script.on_event(defines.events.on_gui_click, function(event)
   end
 end)
 
--- Close move menu when the main UI closes
 script.on_event(defines.events.on_gui_closed, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
@@ -466,13 +462,12 @@ script.on_event(defines.events.on_gui_closed, function(event)
   if element and element.name == UI_NAME then
     capture_ui_state(player)
     element.destroy()
-    destroy_move_menu(player)
+    local menu = player.gui.screen[MOVE_MENU_NAME]; if menu and menu.valid then menu.destroy() end
   elseif element and element.name == MOVE_MENU_NAME then
     element.destroy()
   end
 end)
 
--- Track frame location
 script.on_event(defines.events.on_gui_location_changed, function(event)
   local el = event.element
   if not (el and el.valid and el.name == UI_NAME) then return end
@@ -480,11 +475,9 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
   st.loc = { x = el.location.x, y = el.location.y }
 end)
 
--- Init/config
 script.on_init(function() local g=get_global(); g.spui=g.spui or {}; g.spfolders=g.spfolders or {} end)
 script.on_configuration_changed(function() local g=get_global(); g.spui=g.spui or {}; g.spfolders=g.spfolders or {} end)
 
--- Rebuild on relevant map events if UI is open
 local function rebuild_all_open()
   for _, p in pairs(game.connected_players) do
     local frame = p.gui.screen[UI_NAME]
