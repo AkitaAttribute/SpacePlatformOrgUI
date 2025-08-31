@@ -25,11 +25,6 @@ local RESIZE_HANDLE_SIZE = 16  -- px square
 -- Window size limits
 local MIN_W, MIN_H, MAX_W, MAX_H = 360, 320, 1400, 1400
 
--- Empirical offsets from frame's top-left to its visual bottom-right.
--- These account for the frame chrome/titlebar so the handle hugs the visible corner.
-local FRAME_OFF_X = 24
-local FRAME_OFF_Y = 40
-
 -- ---------- State ----------
 
 local function get_global()
@@ -72,6 +67,8 @@ local function element_has_ancestor_named(el, name)
   return false
 end
 
+local function num(x) return tonumber(x) or 0 end
+
 -- ---------- UI geometry ----------
 
 local function capture_ui_state(player)
@@ -98,7 +95,7 @@ local function apply_ui_state(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
 
-  -- lock size so bottom-right math is exact
+  -- Lock size so bottom-right computations are exact
   frame.style.minimal_width  = st.w
   frame.style.maximal_width  = st.w
   frame.style.minimal_height = st.h
@@ -225,7 +222,7 @@ local function open_move_menu(player, platform_id)
     if f then
       menu.add{
         type = "button",
-        name = "sp-move-target-" .. fid .. "-" .. platform_id,
+        name = "sp-move-target-" .. fid .. "-" .. platform_id, -- unique
         caption = f.name,
         style = "button",
         tags = { action = "move_to_folder", folder_id = fid, platform_id = platform_id }
@@ -257,10 +254,17 @@ local function open_rename_menu(player, folder_id)
   tf.style.minimal_width = 240
 
   local row = dlg.add{ type = "flow", direction = "horizontal" }
-  row.add{ type = "button", name = "sp-rename-ok", caption = "OK", style = "confirm_button", tags = { action = "rename_ok" } }
-  row.add{ type = "button", name = "sp-rename-cancel", caption = "Cancel", style = "button", tags = { action = "rename_cancel" } }
+  row.add{
+    type = "button", name = "sp-rename-ok", caption = "OK", style = "confirm_button",
+    tags = { action = "rename_ok" }
+  }
+  row.add{
+    type = "button", name = "sp-rename-cancel", caption = "Cancel", style = "button",
+    tags = { action = "rename_cancel" }
+  }
 
-  tf.focus(); tf.select_all()
+  tf.focus()
+  tf.select_all()
 end
 
 local function open_delete_confirm(player, folder_id)
@@ -279,8 +283,14 @@ local function open_delete_confirm(player, folder_id)
     style = "subheader_caption_label"
   }
   local row = dlg.add{ type = "flow", direction = "horizontal" }
-  row.add{ type = "button", name = "sp-delete-ok", caption = "Delete", style = "confirm_button", tags = { action = "delete_confirm_ok" } }
-  row.add{ type = "button", name = "sp-delete-cancel", caption = "Cancel", style = "button", tags = { action = "delete_confirm_cancel" } }
+  row.add{
+    type = "button", name = "sp-delete-ok", caption = "Delete", style = "confirm_button",
+    tags = { action = "delete_confirm_ok" }
+  }
+  row.add{
+    type = "button", name = "sp-delete-cancel", caption = "Cancel", style = "button",
+    tags = { action = "delete_confirm_cancel" }
+  }
 end
 
 -- ---------- Resize handle ----------
@@ -291,6 +301,7 @@ local function destroy_resizer(player)
 end
 
 local function position_resizer(player)
+  -- Align to the visual bottom-right corner of our frame by adding style paddings.
   local frame  = player.gui.screen[UI_NAME]
   local handle = player.gui.screen[RESIZE_HANDLE_NAME]
   if not (frame and frame.valid and handle and handle.valid) then return end
@@ -299,12 +310,15 @@ local function position_resizer(player)
   local loc = frame.location
   if loc and loc.x and loc.y then fx, fy = loc.x, loc.y end
 
-  local w = tonumber(frame.style.minimal_width)  or MIN_W
-  local h = tonumber(frame.style.minimal_height) or MIN_H
+  local s = frame.style
+  local w  = num(s.minimal_width)
+  local h  = num(s.minimal_height)
+  local px = num(s.left_padding) + num(s.right_padding)
+  local py = num(s.top_padding)  + num(s.bottom_padding)
 
   handle.location = {
-    x = fx + w + FRAME_OFF_X - RESIZE_HANDLE_SIZE,
-    y = fy + h + FRAME_OFF_Y - RESIZE_HANDLE_SIZE
+    x = fx + w + px - RESIZE_HANDLE_SIZE,
+    y = fy + h + py - RESIZE_HANDLE_SIZE
   }
 end
 
@@ -315,13 +329,24 @@ local function ensure_resizer(player)
     return handle
   end
 
-  handle = player.gui.screen.add{ type = "frame", name = RESIZE_HANDLE_NAME, direction = "vertical" }
+  handle = player.gui.screen.add{
+    type = "frame",
+    name = RESIZE_HANDLE_NAME,
+    direction = "vertical",
+  }
+
+  -- Clean 16x16 square, minimal chrome
   handle.style.padding = 0
+  handle.style.top_padding = 0
+  handle.style.right_padding = 0
+  handle.style.bottom_padding = 0
+  handle.style.left_padding = 0
   handle.style.minimal_width  = RESIZE_HANDLE_SIZE
   handle.style.minimal_height = RESIZE_HANDLE_SIZE
   handle.style.maximal_width  = RESIZE_HANDLE_SIZE
   handle.style.maximal_height = RESIZE_HANDLE_SIZE
 
+  -- Draggable area
   local drag = handle.add{ type = "empty-widget", style = "draggable_space" }
   drag.style.width  = RESIZE_HANDLE_SIZE
   drag.style.height = RESIZE_HANDLE_SIZE
@@ -414,6 +439,7 @@ local function build_platform_list(player, frame)
       tog.style.minimal_width  = 24
       tog.style.maximal_width  = 24
 
+      -- Folder header uses TAN style
       local head = bar.add{
         type = "button",
         caption = string.format("  %s (%d)", (f.name or ("Folder " .. fid)), count),
@@ -422,6 +448,7 @@ local function build_platform_list(player, frame)
       }
       head.style.horizontally_stretchable = true
 
+      -- Rename (✎)
       local ren = bar.add{
         type = "button", caption = "✎", style = "tool_button",
         tooltip = {"", "Rename folder"},
@@ -430,6 +457,7 @@ local function build_platform_list(player, frame)
       ren.style.minimal_width  = 24
       ren.style.maximal_width  = 24
 
+      -- Delete (opens confirmation)
       bar.add{
         type   = "sprite-button",
         sprite = "utility/close_fat",
@@ -441,6 +469,7 @@ local function build_platform_list(player, frame)
       if f.expanded then
         for _, e in ipairs(entries) do
           if m.platform_folder[e.id] == fid then
+            -- Platforms are always the normal button style
             add_row(list, "button", e.caption, e.id)
           end
         end
@@ -671,8 +700,13 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
     if fl and fl.x and fl.y then fx, fy = fl.x, fl.y end
 
     local hl = element.location or {x = fx, y = fy}
-    local new_w = math.min(MAX_W, math.max(MIN_W, (hl.x - fx) - FRAME_OFF_X + RESIZE_HANDLE_SIZE))
-    local new_h = math.min(MAX_H, math.max(MIN_H, (hl.y - fy) - FRAME_OFF_Y + RESIZE_HANDLE_SIZE))
+    -- Account for the frame paddings when translating handle movement into size.
+    local s = frame.style
+    local px = num(s.left_padding) + num(s.right_padding)
+    local py = num(s.top_padding)  + num(s.bottom_padding)
+
+    local new_w = math.min(MAX_W, math.max(MIN_W, (hl.x - fx) - px + RESIZE_HANDLE_SIZE))
+    local new_h = math.min(MAX_H, math.max(MIN_H, (hl.y - fy) - py + RESIZE_HANDLE_SIZE))
 
     local st = ui_state(player.index)
     st.w, st.h = new_w, new_h
