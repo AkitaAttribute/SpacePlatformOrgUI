@@ -10,7 +10,7 @@ data:extend({
 })
 
 local styles = data.raw["gui-style"].default
-local util = require("util")  -- for deep copy
+local util = require("util")  -- deep copy
 
 -- Helpers
 local function hex_to_tint(hex) -- "#RRGGBB"
@@ -20,34 +20,30 @@ local function hex_to_tint(hex) -- "#RRGGBB"
   return { r = r, g = g, b = b, a = 1.0 }
 end
 
-local function lighten(c, amt) -- mix toward white
+local function lighten(c, amt)
   return { r = c.r + (1 - c.r) * amt,
            g = c.g + (1 - c.g) * amt,
            b = c.b + (1 - c.b) * amt,
            a = 1.0 }
 end
 
-local function darken(c, amt) -- mix toward black
+local function darken(c, amt)
   local f = 1 - amt
   return { r = c.r * f, g = c.g * f, b = c.b * f, a = 1.0 }
 end
 
 local TAN = hex_to_tint("#FFD9C2")
 
--- Copy a graphical_set and tint all relevant layers (base/center/shadow if present)
+-- Copy a graphical set and tint only base/center. Keep shadow untouched to avoid color bleed.
 local function tinted_copy(gs, tint)
   local out = util.table.deepcopy(gs)
-  local function tint_layer(layer)
-    if not layer then return end
-    if layer.base then layer.base.tint = tint end
-    if layer.center then layer.center.tint = tint end
-    if layer.shadow then layer.shadow.tint = tint end
-  end
-  tint_layer(out)
+  if out.base   then out.base.tint   = tint end
+  if out.center then out.center.tint = tint end
+  -- DO NOT touch out.shadow
   return out
 end
 
--- Build tan button style by tinting the REAL button graphical sets
+-- Tan button style by tinting the real stock button’s sets (shadow preserved)
 styles["sp_list_button_tan"] = {
   type = "button_style",
   parent = "button",
