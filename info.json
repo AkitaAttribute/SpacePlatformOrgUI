@@ -1,6 +1,6 @@
 {
   "name": "space-platform-org-ui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "title": "Space Platform Organizer UI",
   "author": "OpenAI",
   "description": "Simple UI listing all space platforms with quick access.",
