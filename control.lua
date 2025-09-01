@@ -1,6 +1,7 @@
 -- control.lua
 -- Space Platform Organizer UI
--- Persistent per-force (by name) folders + scale-aware resize handle + close button
+-- Factorio 2.0+ persistence via `storage` (replaces old `global`)
+-- Folder state is per-force (keyed by force.name) and survives save/load.
 
 -- ========= Constants =========
 local UI_NAME               = "space-platform-org-ui"
@@ -30,93 +31,33 @@ local RESIZE_SIZE           = 16  -- logical units; multiplied by display_scale 
 -- Window size limits (logical units)
 local MIN_W, MIN_H, MAX_W, MAX_H = 360, 320, 1400, 1400
 
--- Debug overlay (disabled for release)
+-- Debug overlay (keep false for release)
 local DEBUG                 = false
 
--- ========= Global state =========
-local function ensure_global_tables()
-  if type(global) ~= "table" then rawset(_G, "global", {}) end
-  global.spui                       = global.spui or {}                 -- per-player ui state
-  -- New canonical persistence keyed by force.name (stable across loads)
-  global.spfolders_by_force_name    = global.spfolders_by_force_name or {}
-  -- Legacy stores we may need to migrate from:
-  global.spfolders_by_force         = global.spfolders_by_force or nil   -- legacy keyed by force.index
-  global.spfolders                  = global.spfolders or nil            -- very old per-player store
+-- ========= Persistent state (Factorio 2.0: use `storage`) =========
+local function ensure_storage_tables()
+  -- DO NOT overwrite `storage` – Factorio owns it and persists it.
+  storage.spui                    = storage.spui or {}                 -- per-player UI state (size/pos, etc.)
+  storage.spfolders_by_force_name = storage.spfolders_by_force_name or {} -- canonical folder model per force.name
 end
 
-local function ui_state(pi)
-  ensure_global_tables()
-  local st = global.spui[pi]
+local function ui_state(player_index)
+  ensure_storage_tables()
+  local st = storage.spui[player_index]
   if not st then
     st = { w = 720, h = 480, loc = nil, scroll = 0, button_w = 260, button_h = 24, follow = false }
-    global.spui[pi] = st
+    storage.spui[player_index] = st
   end
   return st
 end
 
--- Migrate legacy per-player and legacy per-force(index) into per-force(name)
-local function migrate_legacy_for_player(player)
-  ensure_global_tables()
-  local fname = (player.force and player.force.valid) and player.force.name or "player"
-
-  -- If nothing exists for this force name yet, try to migrate
-  if not global.spfolders_by_force_name[fname] then
-    -- 1) From legacy per-player bucket
-    if global.spfolders and global.spfolders[player.index] then
-      local legacy = global.spfolders[player.index]
-      local m = {
-        next_id = legacy.next_id or 1,
-        folders = {},
-        order   = {},
-        platform_folder = {}
-      }
-      for k,v in pairs(legacy.folders or {}) do m.folders[k] = { name=v.name, order=v.order, expanded=v.expanded } end
-      for i,v in ipairs(legacy.order or {}) do m.order[i] = v end
-      for k,v in pairs(legacy.platform_folder or {}) do m.platform_folder[k] = v end
-      global.spfolders_by_force_name[fname] = m
-      -- clear this entry
-      global.spfolders[player.index] = nil
-    end
-
-    -- 2) From legacy per-force(index) bucket
-    if (not global.spfolders_by_force_name[fname]) and global.spfolders_by_force and player.force and player.force.valid then
-      local fk = player.force.index
-      local legacy2 = global.spfolders_by_force[fk]
-      if legacy2 then
-        local m = {
-          next_id = legacy2.next_id or 1,
-          folders = {},
-          order   = {},
-          platform_folder = {}
-        }
-        for k,v in pairs(legacy2.folders or {}) do m.folders[k] = { name=v.name, order=v.order, expanded=v.expanded } end
-        for i,v in ipairs(legacy2.order or {}) do m.order[i] = v end
-        for k,v in pairs(legacy2.platform_folder or {}) do m.platform_folder[k] = v end
-        global.spfolders_by_force_name[fname] = m
-        -- do NOT delete the old numeric bucket here globally; other forces may still need it.
-      end
-    end
-  end
-
-  -- If legacy tables are now empty, drop them to avoid confusion
-  if global.spfolders then
-    local any=false; for _,v in pairs(global.spfolders) do if v then any=true; break end end
-    if not any then global.spfolders=nil end
-  end
-  if global.spfolders_by_force then
-    local any=false; for _,v in pairs(global.spfolders_by_force) do if v then any=true; break end end
-    if not any then global.spfolders_by_force=nil end
-  end
-end
-
 local function folder_model_for_player(player)
-  ensure_global_tables()
-  migrate_legacy_for_player(player)
+  ensure_storage_tables()
   local fname = (player.force and player.force.valid) and player.force.name or "player"
-  local m = global.spfolders_by_force_name[fname]
+  local m = storage.spfolders_by_force_name[fname]
   if not m then
     m = { next_id = 1, folders = {}, order = {}, platform_folder = {} }
-    global.spfolders_by_force_name[fname] = m
+    storage.spfolders_by_force_name[fname] = m
   end
   return m
 end
@@ -160,7 +101,11 @@ local function apply_ui_state(player)
   if not (frame and frame.valid) then return end
 
   fix_frame_size(frame, st.w, st.h)
-  if st.loc and st.loc.x and st.loc.y then frame.location = { x = st.loc.x, y = st.loc.y } else frame.auto_center = true end
+  if st.loc and st.loc.x and st.loc.y then
+    frame.location = { x = st.loc.x, y = st.loc.y }
+  else
+    frame.auto_center = true
+  end
 
   local scroll = frame["platform_scroll"]
   if scroll and scroll.valid then
@@ -226,7 +171,7 @@ local function position_resizer(player)
   h.bring_to_front()
 end
 
--- ========= Debug markers (kept but disabled) =========
+-- ========= Debug markers (disabled) =========
 local function ensure_dbg_box(player, name, label)
   local el = player.gui.screen[name]
   if el and el.valid then return el end
@@ -240,7 +185,9 @@ end
 
 local function update_debug_markers(player)
   if not DEBUG then
-    for _, n in pairs({"spui-dbg-tl","spui-dbg-br"}) do local e = player.gui.screen[n]; if e and e.valid then e.destroy() end end
+    for _, n in pairs({"spui-dbg-tl","spui-dbg-br"}) do
+      local e = player.gui.screen[n]; if e and e.valid then e.destroy() end
+    end
     return
   end
   local frame = player.gui.screen[UI_NAME]; if not (frame and frame.valid) then return end
@@ -252,7 +199,9 @@ end
 local function collect_platforms(force)
   local t = {}
   if not (force and force.valid and force.platforms) then return t end
-  for _, p in pairs(force.platforms) do if p and p.valid then t[#t+1] = { id = p.index, caption = p.name or ("Platform " .. p.index) } end end
+  for _, p in pairs(force.platforms) do
+    if p and p.valid then t[#t+1] = { id = p.index, caption = p.name or ("Platform " .. p.index) } end
+  end
   table.sort(t, function(a,b) return (a.caption or "") < (b.caption or "") end)
   return t
 end
@@ -282,9 +231,9 @@ local function folder_child_count(m, folder_id, entries)
 end
 
 -- ========= Popups =========
-local function destroy_move_menu(player)  local e = player.gui.screen[MOVE_MENU_NAME];  if e and e.valid then e.destroy() end end
-local function destroy_rename_menu(player)local e = player.gui.screen[RENAME_MENU_NAME]; if e and e.valid then e.destroy() end end
-local function destroy_delete_menu(player)local e = player.gui.screen[DELETE_MENU_NAME]; if e and e.valid then e.destroy() end end
+local function destroy_move_menu(player)   local e = player.gui.screen[MOVE_MENU_NAME];   if e and e.valid then e.destroy() end end
+local function destroy_rename_menu(player) local e = player.gui.screen[RENAME_MENU_NAME]; if e and e.valid then e.destroy() end end
+local function destroy_delete_menu(player) local e = player.gui.screen[DELETE_MENU_NAME]; if e and e.valid then e.destroy() end end
 
 local function open_move_menu(player, platform_id)
   destroy_move_menu(player)
@@ -494,13 +443,16 @@ end
 local function toggle_platform_ui(player, refresh)
   local frame = player.gui.screen[UI_NAME]
   if frame and frame.valid then
-    if refresh then rebuild_ui(player)
+    if refresh then
+      rebuild_ui(player)
     else
       capture_ui_state(player); frame.destroy()
       local h = player.gui.screen[RESIZE_HANDLE_NAME]; if h and h.valid then h.destroy() end
       ui_state(player.index).follow = false; update_debug_markers(player)
     end
-  else build_platform_ui(player) end
+  else
+    build_platform_ui(player)
+  end
 end
 
 -- ========= Events =========
@@ -607,19 +559,26 @@ script.on_event(defines.events.on_gui_closed, function(event)
 end)
 
 -- ========= Lifecycle & tick glue =========
-script.on_init(function() ensure_global_tables() end)
-script.on_configuration_changed(function() ensure_global_tables() end)
+script.on_init(function() ensure_storage_tables() end)
+script.on_configuration_changed(function() ensure_storage_tables() end)
 
 script.on_nth_tick(1, function()
   for _, p in pairs(game.connected_players) do
     local st = ui_state(p.index)
-    if st.follow then local frame = p.gui.screen[UI_NAME]; if frame and frame.valid then position_resizer(p) end end
+    if st.follow then
+      local frame = p.gui.screen[UI_NAME]; if frame and frame.valid then position_resizer(p) end
+    end
     update_debug_markers(p)
   end
 end)
 
 local function rebuild_all_open()
-  for _, p in pairs(game.connected_players) do local frame = p.gui.screen[UI_NAME]; if frame and frame.valid then rebuild_ui(p) end end
+  for _, p in pairs(game.connected_players) do
+    local frame = p.gui.screen[UI_NAME]; if frame and frame.valid then
+      -- Keep size/loc; just rebuild contents
+      rebuild_ui(p)
+    end
+  end
 end
 
 if defines.events.on_platform_created then script.on_event(defines.events.on_platform_created, rebuild_all_open) end
