@@ -37,7 +37,7 @@ local function ui_state(pi)
   ensure_global_tables()
   local st = global.spui[pi]
   if not st then
-    st = { w = 440, h = 528, loc = nil, scroll = 0, button_w = 260, button_h = 24 }
+    st = { w = 440, h = 528, loc = nil, scroll = 0, button_w = 260, button_h = 24, follow = false }
     global.spui[pi] = st
   end
   return st
@@ -92,7 +92,7 @@ local function apply_ui_state(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
 
-  -- Lock exact content size (see frame.style.padding=0 in build)
+  -- Lock exact content size (frame padding is 0, see build)
   frame.style.minimal_width  = st.w
   frame.style.maximal_width  = st.w
   frame.style.minimal_height = st.h
@@ -120,10 +120,8 @@ local function handle_location_for(player)
   if not (frame and frame.valid) then return {x=0,y=0} end
   local st = ui_state(player.index)
   local loc = frame.location or {x=0,y=0}
-  -- frame padding is 0, so bottom-right is simply loc + (w,h).
-  local x = loc.x + num(st.w) - RESIZE_SIZE
-  local y = loc.y + num(st.h) - RESIZE_SIZE
-  return { x = x, y = y }
+  -- Frame padding is 0, so bottom-right is simply loc + (w,h).
+  return { x = loc.x + num(st.w) - RESIZE_SIZE, y = loc.y + num(st.h) - RESIZE_SIZE }
 end
 
 local function ensure_resizer(player)
@@ -142,19 +140,21 @@ local function ensure_resizer(player)
   local d = h.add{ type = "empty-widget", style = "draggable_space" }
   d.style.width  = RESIZE_SIZE
   d.style.height = RESIZE_SIZE
-  d.drag_target  = h -- parent is a valid higher-level element
+  d.drag_target  = h -- drag the parent (allowed)
 
   -- Park it correctly.
-  local loc = handle_location_for(player)
-  h.location = loc
+  h.location = handle_location_for(player)
   return h
 end
 
 local function position_resizer(player)
   local h = ensure_resizer(player)
   if not (h and h.valid) then return end
-  local loc = handle_location_for(player)
-  h.location = loc
+  local want = handle_location_for(player)
+  local loc  = h.location or {x=0,y=0}
+  if loc.x ~= want.x or loc.y ~= want.y then
+    h.location = want
+  end
 end
 
 -- ---------- Data / folders ----------
@@ -452,7 +452,7 @@ local function build_platform_ui(player)
   -- Main list (stretches)
   build_platform_list(player, frame)
 
-  -- Footer to reserve space equal to handle size (keeps visuals nice)
+  -- Footer to reserve space equal to handle size
   local footer = frame.add{ type = "flow", name = "sp_footer", direction = "horizontal" }
   footer.style.height = RESIZE_SIZE
   local spacer = footer.add{ type = "empty-widget" }
@@ -461,6 +461,9 @@ local function build_platform_ui(player)
   -- Apply size/position and park the handle
   apply_ui_state(player)
   position_resizer(player)
+
+  -- Turn on follow so the handle stays glued even if the engine re-centers later in the tick
+  ui_state(player.index).follow = true
 end
 
 local function rebuild_ui(player)
@@ -480,6 +483,7 @@ local function toggle_platform_ui(player, refresh)
       frame.destroy()
       local h = player.gui.screen[RESIZE_HANDLE_NAME]
       if h and h.valid then h.destroy() end
+      ui_state(player.index).follow = false
     end
   else
     build_platform_ui(player)
@@ -616,6 +620,7 @@ script.on_event(defines.events.on_gui_closed, function(event)
     destroy_delete_menu(player)
     local h = player.gui.screen[RESIZE_HANDLE_NAME]
     if h and h.valid then h.destroy() end
+    ui_state(player.index).follow = false
   elseif el and (el.name == MOVE_MENU_NAME or el.name == RENAME_MENU_NAME or el.name == DELETE_MENU_NAME) then
     el.destroy()
   end
@@ -625,6 +630,17 @@ end)
 
 script.on_init(function() ensure_global_tables() end)
 script.on_configuration_changed(function() ensure_global_tables() end)
+
+-- Keep the handle glued to the bottom-right while the UI is open.
+script.on_nth_tick(1, function()
+  for _, p in pairs(game.connected_players) do
+    local st = ui_state(p.index)
+    if st.follow then
+      local frame = p.gui.screen[UI_NAME]
+      if frame and frame.valid then position_resizer(p) end
+    end
+  end
+end)
 
 local function rebuild_all_open()
   for _, p in pairs(game.connected_players) do
