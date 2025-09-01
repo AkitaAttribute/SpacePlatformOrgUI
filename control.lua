@@ -1,6 +1,6 @@
 -- control.lua
 -- Space Platform Organizer UI
--- Fixed-size frame + bottom-right resize handle + folders + debug overlay
+-- Scale-aware bottom-right resize handle + folders + debug overlay
 
 -- ========= Constants =========
 local UI_NAME               = "space-platform-org-ui"
@@ -22,19 +22,19 @@ local DELETE_MENU_NAME      = "sp-delete-confirm"
 
 -- Top-level resize handle
 local RESIZE_HANDLE_NAME    = "sp-resize-handle"
-local RESIZE_SIZE           = 16
+local RESIZE_SIZE           = 16  -- logical units; multiplied by display_scale for screen pixels
 
--- Window size limits
+-- Window size limits (logical units)
 local MIN_W, MIN_H, MAX_W, MAX_H = 360, 320, 1400, 1400
 
--- Debug overlay always on (shows TL/BR boxes and size label)
+-- Debug overlay
 local DEBUG                 = true
 
 -- ========= Global state =========
 local function ensure_global_tables()
   if type(global) ~= "table" then rawset(_G, "global", {}) end
-  global.spui      = global.spui or {}       -- per-player ui state
-  global.spfolders = global.spfolders or {}  -- per-player folder model
+  global.spui      = global.spui or {}
+  global.spfolders = global.spfolders or {}
 end
 
 local function ui_state(pi)
@@ -42,7 +42,7 @@ local function ui_state(pi)
   local st = global.spui[pi]
   if not st then
     st = {
-      w = 720, h = 480,
+      w = 720, h = 480,           -- logical (pre-scale) size
       loc = nil,
       scroll = 0,
       button_w = 260, button_h = 24,
@@ -65,8 +65,8 @@ end
 
 -- ========= Helpers =========
 local function num(x) return tonumber(x) or 0 end
+local function scale_of(player) return (player and player.display_scale) or 1 end
 
--- Lock a frame to an exact size and prevent stretching
 local function fix_frame_size(frame, w, h)
   frame.style.horizontally_stretchable = false
   frame.style.vertically_stretchable   = false
@@ -106,7 +106,8 @@ local function update_info_label(player)
   local loc = frame.location or {x=0,y=0}
   local w   = num(frame.style.minimal_width)
   local h   = num(frame.style.minimal_height)
-  info.caption = string.format("  w=%d h=%d  @ %d,%d", w, h, loc.x or 0, loc.y or 0)
+  local s   = scale_of(player)
+  info.caption = string.format("  w=%d h=%d  @ %d,%d  (scale %.2f)", w, h, loc.x or 0, loc.y or 0, s)
 end
 
 local function apply_ui_state(player)
@@ -114,17 +115,14 @@ local function apply_ui_state(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
 
-  -- Hard lock size
   fix_frame_size(frame, st.w, st.h)
 
-  -- Position
   if st.loc and st.loc.x and st.loc.y then
     frame.location = { x = st.loc.x, y = st.loc.y }
   else
     frame.auto_center = true
   end
 
-  -- Scroll
   local scroll = frame["platform_scroll"]
   if scroll and scroll.valid then
     local sb = scroll.vertical_scrollbar
@@ -137,32 +135,39 @@ local function apply_ui_state(player)
   update_info_label(player)
 end
 
--- ========= Resize handle positioning =========
+-- ========= Resize handle positioning (scale-aware) =========
 local function handle_location_for(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return {x=0, y=0} end
-  local loc = frame.location or {x=0, y=0}
-  local w   = num(frame.style.minimal_width)
-  local h   = num(frame.style.minimal_height)
-  return { x = loc.x + w - RESIZE_SIZE, y = loc.y + h - RESIZE_SIZE }
+  local loc   = frame.location or {x=0, y=0}
+  local w_lu  = num(frame.style.minimal_width)
+  local h_lu  = num(frame.style.minimal_height)
+  local s     = scale_of(player)
+  -- Convert logical dimensions to screen pixels
+  local w_px  = math.floor(w_lu * s + 0.5)
+  local h_px  = math.floor(h_lu * s + 0.5)
+  local size_px = math.floor(RESIZE_SIZE * s + 0.5)
+  return { x = loc.x + w_px - size_px, y = loc.y + h_px - size_px }
 end
 
 local function ensure_resizer(player)
   local h = player.gui.screen[RESIZE_HANDLE_NAME]
   if h and h.valid then return h end
 
-  -- A small top-level frame with a draggable_space child that drags its PARENT
   h = player.gui.screen.add{ type = "frame", name = RESIZE_HANDLE_NAME, direction = "vertical" }
   h.style.padding = 0
   h.style.margin  = 0
-  h.style.minimal_width  = RESIZE_SIZE
-  h.style.minimal_height = RESIZE_SIZE
-  h.style.maximal_width  = RESIZE_SIZE
-  h.style.maximal_height = RESIZE_SIZE
+
+  local s = scale_of(player)
+  local size_px = math.floor(RESIZE_SIZE * s + 0.5)
+  h.style.minimal_width  = size_px
+  h.style.minimal_height = size_px
+  h.style.maximal_width  = size_px
+  h.style.maximal_height = size_px
 
   local d = h.add{ type = "empty-widget", style = "draggable_space" }
-  d.style.width  = RESIZE_SIZE
-  d.style.height = RESIZE_SIZE
+  d.style.width  = size_px
+  d.style.height = size_px
   d.drag_target  = h
 
   h.location = handle_location_for(player)
@@ -173,6 +178,18 @@ end
 local function position_resizer(player)
   local h = ensure_resizer(player)
   if not (h and h.valid) then return end
+  -- Keep the handle sized correctly when scale changes
+  local s = scale_of(player)
+  local size_px = math.floor(RESIZE_SIZE * s + 0.5)
+  h.style.minimal_width  = size_px
+  h.style.minimal_height = size_px
+  h.style.maximal_width  = size_px
+  h.style.maximal_height = size_px
+  if h.children[1] and h.children[1].valid then
+    h.children[1].style.width  = size_px
+    h.children[1].style.height = size_px
+  end
+
   local want = handle_location_for(player)
   local loc  = h.location or {x=0, y=0}
   if loc.x ~= want.x or loc.y ~= want.y then
@@ -216,8 +233,7 @@ local function update_debug_markers(player)
   tl.location = frame.location or {x=0,y=0}
 
   local br = ensure_dbg_box(player, "spui-dbg-br", "BR")
-  local loc = handle_location_for(player)
-  br.location = { x = loc.x, y = loc.y }
+  br.location = handle_location_for(player)
 end
 
 -- ========= Folder model =========
@@ -373,7 +389,7 @@ local function add_row(list_flow, style_name, caption, platform_id)
     type = "button",
     name = BUTTON_PREFIX .. tostring(platform_id),
     caption = caption,
-    style   = style_name, -- standard button for platforms
+    style   = style_name,
     tags    = { platform_index = platform_id },
   }
   btn.style.horizontally_stretchable = true
@@ -408,7 +424,8 @@ local function build_platform_list(player, frame)
 
   local scroll = frame.add{ type = "scroll-pane", name = "platform_scroll" }
   scroll.style.vertically_stretchable   = true
-  scroll.style.horizontally_stretchable = true   -- allow it to fill available width
+  scroll.style.horizontally_stretchable = true
+  scroll.horizontal_scroll_policy = "never"   -- prevent horizontal scrollbar
 
   local list = scroll.add{ type = "flow", name = "platform_list", direction = "vertical" }
   list.style.vertically_stretchable   = true
@@ -487,12 +504,11 @@ local function build_platform_ui(player)
   destroy_move_menu(player); destroy_rename_menu(player); destroy_delete_menu(player)
 
   local frame = player.gui.screen.add{ type = "frame", name = UI_NAME, direction = "vertical" }
-  frame.style.padding = 0 -- exact sizing
+  frame.style.padding = 0
 
   local st = ui_state(player.index)
   frame.auto_center = (st.loc == nil)
 
-  -- Title bar (fixed height)
   local titlebar = frame.add{ type = "flow", direction = "horizontal", name = "sp_titlebar" }
   titlebar.style.height = 28
   local title = titlebar.add{ type = "label", caption = "Space Platforms", style = "frame_title" }
@@ -501,36 +517,27 @@ local function build_platform_ui(player)
   tdrag.style.horizontally_stretchable = true
   tdrag.style.height = 28
   tdrag.drag_target = frame
-  -- Debug info label
-  titlebar.add{ type="label", name="sp_dbg_info", caption="  w=?,h=? @ ?,?", style="label" }
+  titlebar.add{ type="label", name="sp_dbg_info", caption="  w=?,h=? @ ?,? (scale ?)", style="label" }
 
-  -- Controls row (fixed height)
   local controls = frame.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
   controls.style.horizontal_spacing = 2
   controls.style.height = 28
   controls.add{ type = "button", name = HEADER_ADD_FOLDER, caption = "+F", style = "tool_button", tooltip = {"", "Add folder"} }
 
-  -- Main list (fills remaining space)
   build_platform_list(player, frame)
 
-  -- Footer to reserve space equal to handle size (visual padding at bottom)
   local footer = frame.add{ type = "flow", name = "sp_footer", direction = "horizontal" }
   footer.style.height = RESIZE_SIZE
   local spacer = footer.add{ type = "empty-widget" }
   spacer.style.horizontally_stretchable = true
 
-  -- Prevent the top-level frame from stretching because of children
   frame.style.horizontally_stretchable = false
   frame.style.vertically_stretchable   = false
 
-  -- Apply locked size/position and park the handle
   apply_ui_state(player)
   position_resizer(player)
 
-  -- Keep handle glued each tick
   ui_state(player.index).follow = true
-
-  -- Draw debug markers now
   update_debug_markers(player)
 end
 
@@ -656,16 +663,19 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
     local frame = player.gui.screen[UI_NAME]
     if not (frame and frame.valid) then return end
 
+    -- Convert the handle delta in screen pixels back into logical units
     local fx, fy = (frame.location and frame.location.x) or 0, (frame.location and frame.location.y) or 0
     local hl    = el.location or handle_location_for(player)
+    local s     = scale_of(player)
+    local size_px = math.floor(RESIZE_SIZE * s + 0.5)
 
-    local new_w = math.min(MAX_W, math.max(MIN_W, (hl.x - fx) + RESIZE_SIZE))
-    local new_h = math.min(MAX_H, math.max(MIN_H, (hl.y - fy) + RESIZE_SIZE))
+    local new_w = math.min(MAX_W, math.max(MIN_W, ((hl.x - fx) + size_px) / s))
+    local new_h = math.min(MAX_H, math.max(MIN_H, ((hl.y - fy) + size_px) / s))
 
     local st = ui_state(player.index)
-    st.w, st.h = new_w, new_h
+    st.w, st.h = math.floor(new_w + 0.5), math.floor(new_h + 0.5)
 
-    fix_frame_size(frame, new_w, new_h)
+    fix_frame_size(frame, st.w, st.h)
 
     position_resizer(player)
     update_info_label(player)
