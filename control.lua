@@ -1,6 +1,6 @@
 -- control.lua
 -- Space Platform Organizer UI
--- Persistent per-force folders + scale-aware resize handle + close button
+-- Persistent per-force (by name) folders + scale-aware resize handle + close button
 
 -- ========= Constants =========
 local UI_NAME               = "space-platform-org-ui"
@@ -36,10 +36,12 @@ local DEBUG                 = false
 -- ========= Global state =========
 local function ensure_global_tables()
   if type(global) ~= "table" then rawset(_G, "global", {}) end
-  global.spui                 = global.spui or {}              -- per-player ui state
-  global.spfolders_by_force   = global.spfolders_by_force or {}-- per-force folder model (persistent/shared)
-  -- Legacy holder (per-player). If present, we'll migrate on first access:
-  global.spfolders            = global.spfolders or nil
+  global.spui                       = global.spui or {}                 -- per-player ui state
+  -- New canonical persistence keyed by force.name (stable across loads)
+  global.spfolders_by_force_name    = global.spfolders_by_force_name or {}
+  -- Legacy stores we may need to migrate from:
+  global.spfolders_by_force         = global.spfolders_by_force or nil   -- legacy keyed by force.index
+  global.spfolders                  = global.spfolders or nil            -- very old per-player store
 end
 
 local function ui_state(pi)
@@ -52,42 +54,69 @@ local function ui_state(pi)
   return st
 end
 
--- Migrate any legacy per-player folders into the per-force store
-local function migrate_legacy_if_needed(player)
-  if not (global.spfolders and next(global.spfolders)) then return end
-  local legacy = global.spfolders[player.index]
-  if not legacy then return end
-  local fk = player.force and player.force.index or 0
-  if not global.spfolders_by_force[fk] or not next(global.spfolders_by_force[fk]) then
-    -- shallow copy legacy model into force bucket
-    local m = {
-      next_id = legacy.next_id or 1,
-      folders = {},
-      order   = {},
-      platform_folder = {}
-    }
-    -- copy tables
-    for k,v in pairs(legacy.folders or {}) do m.folders[k] = { name=v.name, order=v.order, expanded=v.expanded } end
-    for i,v in ipairs(legacy.order or {}) do m.order[i] = v end
-    for k,v in pairs(legacy.platform_folder or {}) do m.platform_folder[k] = v end
-    global.spfolders_by_force[fk] = m
+-- Migrate legacy per-player and legacy per-force(index) into per-force(name)
+local function migrate_legacy_for_player(player)
+  ensure_global_tables()
+  local fname = (player.force and player.force.valid) and player.force.name or "player"
+
+  -- If nothing exists for this force name yet, try to migrate
+  if not global.spfolders_by_force_name[fname] then
+    -- 1) From legacy per-player bucket
+    if global.spfolders and global.spfolders[player.index] then
+      local legacy = global.spfolders[player.index]
+      local m = {
+        next_id = legacy.next_id or 1,
+        folders = {},
+        order   = {},
+        platform_folder = {}
+      }
+      for k,v in pairs(legacy.folders or {}) do m.folders[k] = { name=v.name, order=v.order, expanded=v.expanded } end
+      for i,v in ipairs(legacy.order or {}) do m.order[i] = v end
+      for k,v in pairs(legacy.platform_folder or {}) do m.platform_folder[k] = v end
+      global.spfolders_by_force_name[fname] = m
+      -- clear this entry
+      global.spfolders[player.index] = nil
+    end
+
+    -- 2) From legacy per-force(index) bucket
+    if (not global.spfolders_by_force_name[fname]) and global.spfolders_by_force and player.force and player.force.valid then
+      local fk = player.force.index
+      local legacy2 = global.spfolders_by_force[fk]
+      if legacy2 then
+        local m = {
+          next_id = legacy2.next_id or 1,
+          folders = {},
+          order   = {},
+          platform_folder = {}
+        }
+        for k,v in pairs(legacy2.folders or {}) do m.folders[k] = { name=v.name, order=v.order, expanded=v.expanded } end
+        for i,v in ipairs(legacy2.order or {}) do m.order[i] = v end
+        for k,v in pairs(legacy2.platform_folder or {}) do m.platform_folder[k] = v end
+        global.spfolders_by_force_name[fname] = m
+        -- do NOT delete the old numeric bucket here globally; other forces may still need it.
+      end
+    end
   end
-  -- clear this player's legacy to avoid repeated migration
-  global.spfolders[player.index] = nil
-  -- if the legacy table is now empty, drop it
-  local still_any = false
-  for _,v in pairs(global.spfolders) do if v then still_any = true; break end end
-  if not still_any then global.spfolders = nil end
+
+  -- If legacy tables are now empty, drop them to avoid confusion
+  if global.spfolders then
+    local any=false; for _,v in pairs(global.spfolders) do if v then any=true; break end end
+    if not any then global.spfolders=nil end
+  end
+  if global.spfolders_by_force then
+    local any=false; for _,v in pairs(global.spfolders_by_force) do if v then any=true; break end end
+    if not any then global.spfolders_by_force=nil end
+  end
 end
 
 local function folder_model_for_player(player)
   ensure_global_tables()
-  migrate_legacy_if_needed(player)
-  local fk = player.force and player.force.index or 0
-  local m = global.spfolders_by_force[fk]
+  migrate_legacy_for_player(player)
+  local fname = (player.force and player.force.valid) and player.force.name or "player"
+  local m = global.spfolders_by_force_name[fname]
   if not m then
     m = { next_id = 1, folders = {}, order = {}, platform_folder = {} }
-    global.spfolders_by_force[fk] = m
+    global.spfolders_by_force_name[fname] = m
   end
   return m
 end
