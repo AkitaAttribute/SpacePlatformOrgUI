@@ -53,18 +53,9 @@ local function folder_model(pi)
   return m
 end
 
--- ---------- Small helpers ----------
+-- ---------- Helpers ----------
 
 local function num(x) return tonumber(x) or 0 end
-
-local function element_has_ancestor_named(el, name)
-  local cur = el
-  while cur do
-    if cur.name == name then return true end
-    cur = cur.parent
-  end
-  return false
-end
 
 -- ---------- Geometry / state ----------
 
@@ -114,14 +105,14 @@ local function apply_ui_state(player)
   end
 end
 
--- Compute the handle's screen location (content coords + frame top-left).
+-- Compute the handle's screen location from the frame's *actual* size
 local function handle_location_for(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return {x=0,y=0} end
-  local st = ui_state(player.index)
   local loc = frame.location or {x=0,y=0}
-  -- Frame padding is 0, so bottom-right is simply loc + (w,h).
-  return { x = loc.x + num(st.w) - RESIZE_SIZE, y = loc.y + num(st.h) - RESIZE_SIZE }
+  local w   = num(frame.style.minimal_width)
+  local h   = num(frame.style.minimal_height)
+  return { x = loc.x + w - RESIZE_SIZE, y = loc.y + h - RESIZE_SIZE }
 end
 
 local function ensure_resizer(player)
@@ -142,8 +133,8 @@ local function ensure_resizer(player)
   d.style.height = RESIZE_SIZE
   d.drag_target  = h -- drag the parent (allowed)
 
-  -- Park it correctly.
   h.location = handle_location_for(player)
+  h.bring_to_front()
   return h
 end
 
@@ -155,6 +146,8 @@ local function position_resizer(player)
   if loc.x ~= want.x or loc.y ~= want.y then
     h.location = want
   end
+  -- Always keep above the window
+  h.bring_to_front()
 end
 
 -- ---------- Data / folders ----------
