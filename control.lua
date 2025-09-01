@@ -30,8 +30,6 @@ local MIN_W, MIN_H, MAX_W, MAX_H = 360, 320, 1400, 1400
 
 local function ensure_global_tables()
   if type(global) ~= "table" then
-    -- In very early phases (or some menu paths) Factorio may not have created `global` yet.
-    -- Create it so our on_configuration_changed handler is safe.
     rawset(_G, "global", {})
   end
   global.spui      = global.spui or {}       -- per-player ui state
@@ -97,7 +95,6 @@ local function apply_ui_state(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
 
-  -- lock size
   frame.style.minimal_width  = st.w
   frame.style.maximal_width  = st.w
   frame.style.minimal_height = st.h
@@ -130,12 +127,19 @@ local function desired_ghost_location(frame)
   return { x = loc.x + w + px - RESIZE_SIZE, y = loc.y + h + py - RESIZE_SIZE }
 end
 
+-- Make the drag target that we move by dragging the grip.
+-- IMPORTANT FIX: it must be a FRAME, because only frames support .location.
 local function ensure_ghost(player)
   local ghost = player.gui.screen[RESIZE_GHOST_NAME]
   if ghost and ghost.valid then return ghost end
-  ghost = player.gui.screen.add{ type = "empty-widget", name = RESIZE_GHOST_NAME }
-  ghost.style.width  = RESIZE_SIZE
-  ghost.style.height = RESIZE_SIZE
+  ghost = player.gui.screen.add{ type = "frame", name = RESIZE_GHOST_NAME, direction = "vertical" }
+  ghost.visible = false               -- fully hidden; the grip drags it
+  ghost.style.padding = 0
+  ghost.style.margin  = 0
+  ghost.style.minimal_width  = RESIZE_SIZE
+  ghost.style.minimal_height = RESIZE_SIZE
+  ghost.style.maximal_width  = RESIZE_SIZE
+  ghost.style.maximal_height = RESIZE_SIZE
   return ghost
 end
 
@@ -450,8 +454,7 @@ local function build_platform_ui(player)
   local grip = footer.add{ type = "empty-widget", name = RESIZE_GRIP_NAME, style = "draggable_space" }
   grip.style.width  = RESIZE_SIZE
   grip.style.height = RESIZE_SIZE
-  -- Dragging the grip moves the invisible screen ghost; we resize from that.
-  local ghost = ensure_ghost(player)
+  local ghost = ensure_ghost(player)        -- invisible frame (drag target)
   grip.drag_target = ghost
 
   -- Apply stored size/pos and park the ghost
@@ -600,7 +603,6 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
     local px = num(s.left_padding) + num(s.right_padding)
     local py = num(s.top_padding)  + num(s.bottom_padding)
 
-    -- Compute new content size from ghost's screen position
     local hl = el.location or {x = fx, y = fy}
     local new_w = math.min(MAX_W, math.max(MIN_W, (hl.x - fx) - px + RESIZE_SIZE))
     local new_h = math.min(MAX_H, math.max(MIN_H, (hl.y - fy) - py + RESIZE_SIZE))
@@ -613,7 +615,6 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
     frame.style.minimal_height = new_h
     frame.style.maximal_height = new_h
 
-    -- Snap ghost back to the new bottom-right so dragging continues smoothly
     el.location = desired_ghost_location(frame)
     return
   end
@@ -639,14 +640,8 @@ end)
 
 -- ---------- Lifecycle ----------
 
-script.on_init(function()
-  ensure_global_tables()
-end)
-
-script.on_configuration_changed(function()
-  -- Keep this extremely safe; do not assume `global` exists.
-  ensure_global_tables()
-end)
+script.on_init(function() ensure_global_tables() end)
+script.on_configuration_changed(function() ensure_global_tables() end)
 
 local function rebuild_all_open()
   for _, p in pairs(game.connected_players) do
