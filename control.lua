@@ -1,7 +1,7 @@
 -- control.lua
 -- Space Platform Organizer UI
--- Factorio 2.0+ persistence via `storage` (replaces old `global`)
--- Folder state is per-force (keyed by force.name) and survives save/load.
+-- Persistence via `storage` (Factorio 2.0+), per-force(by name)
+-- Fix: reliable unassign to Unsorted (type-safe), plus sanitizer.
 
 -- ========= Constants =========
 local UI_NAME               = "space-platform-org-ui"
@@ -36,9 +36,8 @@ local DEBUG                 = false
 
 -- ========= Persistent state (Factorio 2.0: use `storage`) =========
 local function ensure_storage_tables()
-  -- DO NOT overwrite `storage` – Factorio owns it and persists it.
-  storage.spui                    = storage.spui or {}                 -- per-player UI state (size/pos, etc.)
-  storage.spfolders_by_force_name = storage.spfolders_by_force_name or {} -- canonical folder model per force.name
+  storage.spui                    = storage.spui or {}                   -- per-player UI state
+  storage.spfolders_by_force_name = storage.spfolders_by_force_name or {}-- per-force(by name) folder model
 end
 
 local function ui_state(player_index)
@@ -51,6 +50,24 @@ local function ui_state(player_index)
   return st
 end
 
+-- Sanitize model: coerce folder ids to numbers; drop UNSORTED and bad values
+local function sanitize_folder_model(m)
+  if not (m and m.platform_folder) then return end
+  for pid, fid in pairs(m.platform_folder) do
+    local nfid = tonumber(fid)
+    if nfid == nil then
+      -- Unknown non-numeric tag; clear it
+      m.platform_folder[pid] = nil
+    elseif nfid == UNSORTED_ID then
+      -- Our "unsorted" sentinel must be nil in the map
+      m.platform_folder[pid] = nil
+    else
+      -- Normalize to numeric id
+      m.platform_folder[pid] = nfid
+    end
+  end
+end
+
 local function folder_model_for_player(player)
   ensure_storage_tables()
   local fname = (player.force and player.force.valid) and player.force.name or "player"
@@ -59,6 +76,7 @@ local function folder_model_for_player(player)
     m = { next_id = 1, folders = {}, order = {}, platform_folder = {} }
     storage.spfolders_by_force_name[fname] = m
   end
+  sanitize_folder_model(m)
   return m
 end
 
@@ -223,7 +241,7 @@ end
 local function assign_platform(player, platform_id, folder_id)
   local m = folder_model_for_player(player)
   if folder_id and not m.folders[folder_id] then return end
-  m.platform_folder[platform_id] = folder_id
+  m.platform_folder[platform_id] = folder_id  -- nil removes the key (unsorted)
 end
 
 local function folder_child_count(m, folder_id, entries)
@@ -255,6 +273,7 @@ local function open_move_menu(player, platform_id)
     type = "button",
     name = "sp-move-target-none-" .. platform_id,
     caption = "(Unsorted)", style  = "button",
+    -- IMPORTANT: keep folder_id numeric UNSORTED_ID; handler will coerce/interpret
     tags   = { action = "move_to_folder", folder_id = UNSORTED_ID, platform_id = platform_id }
   }
 end
@@ -468,16 +487,24 @@ script.on_event(defines.events.on_gui_click, function(event)
   if name == CLOSE_BTN_NAME or tags.action == "close_window" then toggle_platform_ui(player); return end
   if name == HEADER_ADD_FOLDER then add_folder(player, nil); rebuild_ui(player); return end
 
-  if tags.action == "toggle_folder" and tags.folder_id then
-    local m = folder_model_for_player(player); local f = m.folders[tags.folder_id]; if not f then return end
-    f.expanded = not f.expanded; rebuild_ui(player); return
+  if tags.action == "toggle_folder" and tags.folder_id ~= nil then
+    local m = folder_model_for_player(player)
+    local fid = tonumber(tags.folder_id)  -- ensure numeric
+    if fid and m.folders[fid] then
+      m.folders[fid].expanded = not m.folders[fid].expanded
+      rebuild_ui(player)
+    end
+    return
   end
 
-  if tags.action == "open_delete_confirm" and tags.folder_id then open_delete_confirm(player, tags.folder_id); return end
+  if tags.action == "open_delete_confirm" and tags.folder_id ~= nil then
+    local fid = tonumber(tags.folder_id); if fid then open_delete_confirm(player, fid) end
+    return
+  end
   if tags.action == "delete_confirm_ok" then
     local dlg = player.gui.screen[DELETE_MENU_NAME]
     if dlg and dlg.valid then
-      local fid = dlg.tags and dlg.tags.folder_id
+      local fid = dlg.tags and tonumber(dlg.tags.folder_id)
       if fid then delete_folder_and_unassign(player, fid) end
       destroy_delete_menu(player); rebuild_ui(player)
     end
@@ -485,20 +512,34 @@ script.on_event(defines.events.on_gui_click, function(event)
   end
   if tags.action == "delete_confirm_cancel" then destroy_delete_menu(player); return end
 
-  if tags.action == "open_move_menu" and tags.platform_id then open_move_menu(player, tags.platform_id); return end
-  if tags.action == "move_to_folder" and tags.platform_id and tags.folder_id then
-    local fid = (tags.folder_id == UNSORTED_ID) and nil or tags.folder_id
-    assign_platform(player, tags.platform_id, fid)
-    destroy_move_menu(player); rebuild_ui(player); return
+  if tags.action == "open_move_menu" and tags.platform_id ~= nil then
+    local pid = tonumber(tags.platform_id) or tags.platform_id
+    if pid then open_move_menu(player, pid) end
+    return
   end
 
-  if tags.action == "open_rename_menu" and tags.folder_id then open_rename_menu(player, tags.folder_id); return end
+  if tags.action == "move_to_folder" and tags.platform_id ~= nil and tags.folder_id ~= nil then
+    -- TYPE-SAFE: coerce both ids
+    local pid = tonumber(tags.platform_id)
+    local raw_fid = tonumber(tags.folder_id)
+    if pid then
+      local fid = (raw_fid == UNSORTED_ID) and nil or raw_fid
+      assign_platform(player, pid, fid)
+      destroy_move_menu(player); rebuild_ui(player)
+    end
+    return
+  end
+
+  if tags.action == "open_rename_menu" and tags.folder_id ~= nil then
+    local fid = tonumber(tags.folder_id); if fid then open_rename_menu(player, fid) end
+    return
+  end
   if tags.action == "rename_ok" then
     local dlg = player.gui.screen[RENAME_MENU_NAME]
     if dlg and dlg.valid then
-      local fid = dlg.tags and dlg.tags.folder_id
+      local fid = dlg.tags and tonumber(dlg.tags.folder_id)
       if fid then
-        local tf = dlg["sp-rename-input"]
+        local tf = dlg[RENAME_INPUT_NAME]
         local newname = tf and tf.valid and (tf.text or ""):gsub("^%s+", ""):gsub("%s+$", "") or ""
         if newname ~= "" then
           local m = folder_model_for_player(player); local f = m.folders[fid]; if f then f.name = newname end
@@ -510,6 +551,7 @@ script.on_event(defines.events.on_gui_click, function(event)
   end
   if tags.action == "rename_cancel" then destroy_rename_menu(player); return end
 
+  -- Platform selection (open platform view)
   if name:sub(1, #BUTTON_PREFIX) == BUTTON_PREFIX or (tags.platform_index) then
     local pid = tags.platform_index or tonumber(name:sub(#BUTTON_PREFIX + 1)); if not pid then return end
     local plat; if player.force and player.force.valid and player.force.platforms then for _, p in pairs(player.force.platforms) do if p.index == pid then plat = p; break end end end
@@ -559,8 +601,21 @@ script.on_event(defines.events.on_gui_closed, function(event)
 end)
 
 -- ========= Lifecycle & tick glue =========
-script.on_init(function() ensure_storage_tables() end)
-script.on_configuration_changed(function() ensure_storage_tables() end)
+script.on_init(function()
+  ensure_storage_tables()
+  -- One-time sanitation in existing saves
+  for _, m in pairs(storage.spfolders_by_force_name or {}) do
+    sanitize_folder_model(m)
+  end
+end)
+
+script.on_configuration_changed(function()
+  ensure_storage_tables()
+  -- Sanitize on config change as well (covers migrations)
+  for _, m in pairs(storage.spfolders_by_force_name or {}) do
+    sanitize_folder_model(m)
+  end
+end)
 
 script.on_nth_tick(1, function()
   for _, p in pairs(game.connected_players) do
@@ -575,7 +630,6 @@ end)
 local function rebuild_all_open()
   for _, p in pairs(game.connected_players) do
     local frame = p.gui.screen[UI_NAME]; if frame and frame.valid then
-      -- Keep size/loc; just rebuild contents
       rebuild_ui(p)
     end
   end
