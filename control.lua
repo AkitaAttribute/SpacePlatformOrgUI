@@ -1,6 +1,6 @@
 -- control.lua
 -- Space Platform Organizer UI
--- Fixed-size frame + bottom-right resize handle + folders + always-on debug markers
+-- Fixed-size frame + bottom-right resize handle + folders + debug overlay
 
 -- ========= Constants =========
 local UI_NAME               = "space-platform-org-ui"
@@ -27,7 +27,7 @@ local RESIZE_SIZE           = 16
 -- Window size limits
 local MIN_W, MIN_H, MAX_W, MAX_H = 360, 320, 1400, 1400
 
--- Always-on debug overlay
+-- Debug overlay always on (shows TL/BR boxes and size label)
 local DEBUG                 = true
 
 -- ========= Global state =========
@@ -42,7 +42,7 @@ local function ui_state(pi)
   local st = global.spui[pi]
   if not st then
     st = {
-      w = 720, h = 480,          -- start with something clearly not full-screen
+      w = 720, h = 480,
       loc = nil,
       scroll = 0,
       button_w = 260, button_h = 24,
@@ -96,20 +96,17 @@ local function capture_ui_state(player)
   return st
 end
 
-local function sync_children_widths(frame, w)
-  -- The scroll pane and its list must not be allowed to widen the frame.
-  local scroll = frame["platform_scroll"]
-  if scroll and scroll.valid then
-    scroll.style.horizontally_stretchable = false
-    scroll.style.minimal_width = w
-    scroll.style.maximal_width = w
-    local list = scroll["platform_list"]
-    if list and list.valid then
-      list.style.horizontally_stretchable = false
-      list.style.minimal_width = w
-      list.style.maximal_width = w
-    end
-  end
+local function update_info_label(player)
+  local frame = player.gui.screen[UI_NAME]
+  if not (frame and frame.valid) then return end
+  local tb = frame["sp_titlebar"]
+  if not (tb and tb.valid) then return end
+  local info = tb["sp_dbg_info"]
+  if not (info and info.valid) then return end
+  local loc = frame.location or {x=0,y=0}
+  local w   = num(frame.style.minimal_width)
+  local h   = num(frame.style.minimal_height)
+  info.caption = string.format("  w=%d h=%d  @ %d,%d", w, h, loc.x or 0, loc.y or 0)
 end
 
 local function apply_ui_state(player)
@@ -119,7 +116,6 @@ local function apply_ui_state(player)
 
   -- Hard lock size
   fix_frame_size(frame, st.w, st.h)
-  sync_children_widths(frame, st.w)
 
   -- Position
   if st.loc and st.loc.x and st.loc.y then
@@ -138,15 +134,7 @@ local function apply_ui_state(player)
     end
   end
 
-  -- Update debug info label (if present)
-  local tb = frame["sp_titlebar"]
-  if tb and tb.valid then
-    local info = tb["sp_dbg_info"]
-    if info and info.valid then
-      local loc = frame.location or {x=0,y=0}
-      info.caption = string.format("  w=%d h=%d  @ %d,%d", st.w, st.h, loc.x or 0, loc.y or 0)
-    end
-  end
+  update_info_label(player)
 end
 
 -- ========= Resize handle positioning =========
@@ -420,11 +408,11 @@ local function build_platform_list(player, frame)
 
   local scroll = frame.add{ type = "scroll-pane", name = "platform_scroll" }
   scroll.style.vertically_stretchable   = true
-  scroll.style.horizontally_stretchable = false  -- IMPORTANT: children won't force frame to widen
+  scroll.style.horizontally_stretchable = true   -- allow it to fill available width
 
   local list = scroll.add{ type = "flow", name = "platform_list", direction = "vertical" }
   list.style.vertically_stretchable   = true
-  list.style.horizontally_stretchable = false
+  list.style.horizontally_stretchable = true
 
   for _, fid in ipairs(m.order) do
     local f = m.folders[fid]
@@ -522,7 +510,7 @@ local function build_platform_ui(player)
   controls.style.height = 28
   controls.add{ type = "button", name = HEADER_ADD_FOLDER, caption = "+F", style = "tool_button", tooltip = {"", "Add folder"} }
 
-  -- Main list (stretches vertically, fixed horizontally)
+  -- Main list (fills remaining space)
   build_platform_list(player, frame)
 
   -- Footer to reserve space equal to handle size (visual padding at bottom)
@@ -659,6 +647,7 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
     local st = ui_state(player.index)
     st.loc = { x = el.location.x, y = el.location.y }
     position_resizer(player)
+    update_info_label(player)
     update_debug_markers(player)
     return
   end
@@ -677,9 +666,9 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
     st.w, st.h = new_w, new_h
 
     fix_frame_size(frame, new_w, new_h)
-    sync_children_widths(frame, new_w)
 
     position_resizer(player)
+    update_info_label(player)
     update_debug_markers(player)
     return
   end
