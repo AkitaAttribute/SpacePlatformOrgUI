@@ -1,6 +1,6 @@
 -- control.lua
 -- Space Platform Organizer UI
--- Scale-aware bottom-right resize handle + folders + debug overlay
+-- Scale-aware bottom-right resize handle + folders + close button
 
 -- ========= Constants =========
 local UI_NAME               = "space-platform-org-ui"
@@ -20,6 +20,9 @@ local RENAME_INPUT_NAME     = "sp-rename-input"
 -- Delete confirmation
 local DELETE_MENU_NAME      = "sp-delete-confirm"
 
+-- Close button
+local CLOSE_BTN_NAME        = "sp-ui-close"
+
 -- Top-level resize handle
 local RESIZE_HANDLE_NAME    = "sp-resize-handle"
 local RESIZE_SIZE           = 16  -- logical units; multiplied by display_scale for screen pixels
@@ -27,8 +30,8 @@ local RESIZE_SIZE           = 16  -- logical units; multiplied by display_scale 
 -- Window size limits (logical units)
 local MIN_W, MIN_H, MAX_W, MAX_H = 360, 320, 1400, 1400
 
--- Debug overlay
-local DEBUG                 = true
+-- Debug overlay (disabled for release)
+local DEBUG                 = false
 
 -- ========= Global state =========
 local function ensure_global_tables()
@@ -96,20 +99,6 @@ local function capture_ui_state(player)
   return st
 end
 
-local function update_info_label(player)
-  local frame = player.gui.screen[UI_NAME]
-  if not (frame and frame.valid) then return end
-  local tb = frame["sp_titlebar"]
-  if not (tb and tb.valid) then return end
-  local info = tb["sp_dbg_info"]
-  if not (info and info.valid) then return end
-  local loc = frame.location or {x=0,y=0}
-  local w   = num(frame.style.minimal_width)
-  local h   = num(frame.style.minimal_height)
-  local s   = scale_of(player)
-  info.caption = string.format("  w=%d h=%d  @ %d,%d  (scale %.2f)", w, h, loc.x or 0, loc.y or 0, s)
-end
-
 local function apply_ui_state(player)
   local st = ui_state(player.index)
   local frame = player.gui.screen[UI_NAME]
@@ -131,8 +120,6 @@ local function apply_ui_state(player)
       sb.value = math.min(maxv, math.max(0, st.scroll))
     end
   end
-
-  update_info_label(player)
 end
 
 -- ========= Resize handle positioning (scale-aware) =========
@@ -143,7 +130,6 @@ local function handle_location_for(player)
   local w_lu  = num(frame.style.minimal_width)
   local h_lu  = num(frame.style.minimal_height)
   local s     = scale_of(player)
-  -- Convert logical dimensions to screen pixels
   local w_px  = math.floor(w_lu * s + 0.5)
   local h_px  = math.floor(h_lu * s + 0.5)
   local size_px = math.floor(RESIZE_SIZE * s + 0.5)
@@ -178,7 +164,6 @@ end
 local function position_resizer(player)
   local h = ensure_resizer(player)
   if not (h and h.valid) then return end
-  -- Keep the handle sized correctly when scale changes
   local s = scale_of(player)
   local size_px = math.floor(RESIZE_SIZE * s + 0.5)
   h.style.minimal_width  = size_px
@@ -198,7 +183,7 @@ local function position_resizer(player)
   h.bring_to_front()
 end
 
--- ========= Debug markers =========
+-- ========= Debug markers (kept but disabled) =========
 local function ensure_dbg_box(player, name, label)
   local el = player.gui.screen[name]
   if el and el.valid then return el end
@@ -509,6 +494,7 @@ local function build_platform_ui(player)
   local st = ui_state(player.index)
   frame.auto_center = (st.loc == nil)
 
+  -- Titlebar
   local titlebar = frame.add{ type = "flow", direction = "horizontal", name = "sp_titlebar" }
   titlebar.style.height = 28
   local title = titlebar.add{ type = "label", caption = "Space Platforms", style = "frame_title" }
@@ -517,15 +503,31 @@ local function build_platform_ui(player)
   tdrag.style.horizontally_stretchable = true
   tdrag.style.height = 28
   tdrag.drag_target = frame
-  titlebar.add{ type="label", name="sp_dbg_info", caption="  w=?,h=? @ ?,? (scale ?)", style="label" }
+  -- Close button on the right
+  titlebar.add{
+    type   = "sprite-button",
+    name   = CLOSE_BTN_NAME,
+    sprite = "utility/close_fat",
+    style  = "frame_action_button",
+    tooltip= {"", "Close"}
+  }
 
+  -- Controls row
   local controls = frame.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
   controls.style.horizontal_spacing = 2
   controls.style.height = 28
-  controls.add{ type = "button", name = HEADER_ADD_FOLDER, caption = "+F", style = "tool_button", tooltip = {"", "Add folder"} }
+  controls.add{
+    type = "button",
+    name = HEADER_ADD_FOLDER,
+    caption = "New Folder",
+    style = "tool_button",
+    tooltip = {"", "Create a new folder"}
+  }
 
+  -- Main list
   build_platform_list(player, frame)
 
+  -- Footer spacer to keep room for the resize handle
   local footer = frame.add{ type = "flow", name = "sp_footer", direction = "horizontal" }
   footer.style.height = RESIZE_SIZE
   local spacer = footer.add{ type = "empty-widget" }
@@ -578,6 +580,10 @@ script.on_event(defines.events.on_gui_click, function(event)
 
   local name = element.name
   local tags = element.tags or {}
+
+  if name == CLOSE_BTN_NAME or tags.action == "close_window" then
+    toggle_platform_ui(player); return
+  end
 
   if name == HEADER_ADD_FOLDER then add_folder(player, nil); rebuild_ui(player); return end
 
@@ -654,7 +660,6 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
     local st = ui_state(player.index)
     st.loc = { x = el.location.x, y = el.location.y }
     position_resizer(player)
-    update_info_label(player)
     update_debug_markers(player)
     return
   end
@@ -663,7 +668,6 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
     local frame = player.gui.screen[UI_NAME]
     if not (frame and frame.valid) then return end
 
-    -- Convert the handle delta in screen pixels back into logical units
     local fx, fy = (frame.location and frame.location.x) or 0, (frame.location and frame.location.y) or 0
     local hl    = el.location or handle_location_for(player)
     local s     = scale_of(player)
@@ -678,7 +682,6 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
     fix_frame_size(frame, st.w, st.h)
 
     position_resizer(player)
-    update_info_label(player)
     update_debug_markers(player)
     return
   end
