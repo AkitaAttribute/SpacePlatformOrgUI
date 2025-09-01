@@ -1,52 +1,62 @@
 -- control.lua
--- luacheck: globals global script defines log
+-- luacheck: globals global script defines
 
 local UI_NAME = "space-platform-org-ui"
 local BUTTON_PREFIX = "sp-ui-btn-"
 
+-- Header controls
 local HEADER_ADD_FOLDER = "sp-add-folder"
 
+-- Move menu
 local MOVE_MENU_NAME = "sp-move-menu"
 local UNSORTED_ID = -1
 
+-- Rename dialog
 local RENAME_MENU_NAME  = "sp-rename-menu"
 local RENAME_INPUT_NAME = "sp-rename-input"
 
+-- Delete confirmation
 local DELETE_MENU_NAME  = "sp-delete-confirm"
 
-local RESIZE_HANDLE_NAME = "sp-resize-handle"
-local RESIZE_HANDLE_SIZE = 16
+-- Resize grip (child inside the frame) + ghost (screen element used for dragging)
+local RESIZE_GRIP_NAME  = "sp-resize-grip"
+local RESIZE_GHOST_NAME = "sp-resize-ghost"
+local RESIZE_SIZE       = 16
 
+-- Window size limits
 local MIN_W, MIN_H, MAX_W, MAX_H = 360, 320, 1400, 1400
 
 -- ---------- State ----------
 
-local function get_global()
-  local g = rawget(_G, "global")
-  if type(g) ~= "table" then g = {}; rawset(_G, "global", g) end
-  return g
+local function gstate()
+  global.spui      = global.spui or {}       -- per-player ui state
+  global.spfolders = global.spfolders or {}  -- per-player folder model
+  return global
 end
 
 local function ui_state(pi)
-  local g = get_global()
-  g.spui = g.spui or {}
-  local st = g.spui[pi]
+  gstate()
+  local st = global.spui[pi]
   if not st then
     st = { w = 440, h = 528, loc = nil, scroll = 0, button_w = 260, button_h = 24 }
-    g.spui[pi] = st
+    global.spui[pi] = st
   end
   return st
 end
 
 local function folder_model(pi)
-  local g = get_global()
-  g.spfolders = g.spfolders or {}
-  local m = g.spfolders[pi]
-  if not m then m = { next_id = 1, folders = {}, order = {}, platform_folder = {} }; g.spfolders[pi] = m end
+  gstate()
+  local m = global.spfolders[pi]
+  if not m then
+    m = { next_id = 1, folders = {}, order = {}, platform_folder = {} }
+    global.spfolders[pi] = m
+  end
   return m
 end
 
 -- ---------- Helpers ----------
+
+local function num(x) return tonumber(x) or 0 end
 
 local function element_has_ancestor_named(el, name)
   local cur = el
@@ -57,28 +67,7 @@ local function element_has_ancestor_named(el, name)
   return false
 end
 
-local function num(x) return tonumber(x) or 0 end
-
--- Try to get the frame's true bottom-right corner in screen coords.
-local function get_frame_bottom_right(frame)
-  -- Prefer engine-provided screen-space bounding box if available.
-  local ok, bb = pcall(function() return frame.bounding_box end)
-  if ok and bb and bb.right_bottom and bb.right_bottom.x and bb.right_bottom.y then
-    return bb.right_bottom.x, bb.right_bottom.y
-  end
-
-  -- Fall back: compute from top-left location + content size + chrome paddings.
-  local loc = frame.location or {x = 0, y = 0}
-  local s   = frame.style
-  local w   = num(s.minimal_width)
-  local h   = num(s.minimal_height)
-  local px  = num(s.left_padding) + num(s.right_padding)
-  local py  = num(s.top_padding)  + num(s.bottom_padding)
-
-  return loc.x + w + px, loc.y + h + py
-end
-
--- ---------- UI geometry ----------
+-- ---------- Geometry ----------
 
 local function capture_ui_state(player)
   local st = ui_state(player.index)
@@ -104,6 +93,7 @@ local function apply_ui_state(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
 
+  -- lock size
   frame.style.minimal_width  = st.w
   frame.style.maximal_width  = st.w
   frame.style.minimal_height = st.h
@@ -125,37 +115,35 @@ local function apply_ui_state(player)
   end
 end
 
-local function get_row_button(row)
-  if not (row and row.valid and row.type == "flow") then return nil end
-  for _, c in ipairs(row.children) do
-    if c and c.valid and c.type == "button" and (c.tags and c.tags.platform_index) then
-      return c
-    end
-  end
-  return nil
+-- Where the ghost should be (screen coords) for the current frame state
+local function desired_ghost_location(frame)
+  local loc = frame.location or {x = 0, y = 0}
+  local s   = frame.style
+  local w   = num(s.minimal_width)
+  local h   = num(s.minimal_height)
+  local px  = num(s.left_padding) + num(s.right_padding)
+  local py  = num(s.top_padding)  + num(s.bottom_padding)
+  return { x = loc.x + w + px - RESIZE_SIZE, y = loc.y + h + py - RESIZE_SIZE }
 end
 
-local function apply_platform_button_size(player)
+local function ensure_ghost(player)
+  local ghost = player.gui.screen[RESIZE_GHOST_NAME]
+  if ghost and ghost.valid then return ghost end
+  ghost = player.gui.screen.add{ type = "empty-widget", name = RESIZE_GHOST_NAME }
+  ghost.style.width  = RESIZE_SIZE
+  ghost.style.height = RESIZE_SIZE
+  -- No graphics; it's effectively invisible
+  return ghost
+end
+
+local function position_ghost(player)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
-  local st = ui_state(player.index)
-  local scroll = frame["platform_scroll"]
-  local list = (scroll and scroll.valid) and scroll["platform_list"] or nil
-  if not (list and list.valid) then return end
-  for _, row in ipairs(list.children) do
-    if row and row.valid and row.tags and row.tags.kind == "row" then
-      local btn = get_row_button(row)
-      if btn and btn.valid then
-        btn.style.minimal_width  = st.button_w
-        btn.style.maximal_width  = st.button_w
-        btn.style.minimal_height = st.button_h
-        btn.style.maximal_height = st.button_h
-      end
-    end
-  end
+  local ghost = ensure_ghost(player)
+  ghost.location = desired_ghost_location(frame)
 end
 
--- ---------- Data helpers ----------
+-- ---------- Model ----------
 
 local function collect_platforms(force)
   local t = {}
@@ -169,7 +157,7 @@ local function collect_platforms(force)
   return t
 end
 
-local function folder_model_add(player, name)
+local function add_folder(player, name)
   local m = folder_model(player.index)
   local id = m.next_id; m.next_id = id + 1
   m.folders[id] = { name = name or ("Folder " .. id), order = #m.order + 1, expanded = true }
@@ -202,7 +190,7 @@ local function folder_child_count(m, folder_id, entries)
   return n
 end
 
--- ---------- Menus & Dialogs ----------
+-- ---------- Menus / Dialogs ----------
 
 local function destroy_move_menu(player)
   local menu = player.gui.screen[MOVE_MENU_NAME]
@@ -252,19 +240,14 @@ local function open_rename_menu(player, folder_id)
   local m = folder_model(player.index)
   local f = m.folders[folder_id]; if not f then return end
 
-  local dlg = player.gui.screen.add{
-    type = "frame", name = RENAME_MENU_NAME, direction = "vertical", tags = { folder_id = folder_id }
-  }
+  local dlg = player.gui.screen.add{ type = "frame", name = RENAME_MENU_NAME, direction = "vertical", tags = { folder_id = folder_id } }
   dlg.auto_center = true
-
   dlg.add{ type = "label", caption = "Rename folder:", style = "subheader_caption_label" }
   local tf = dlg.add{ type = "textfield", name = RENAME_INPUT_NAME, text = f.name or "" }
   tf.style.minimal_width = 240
-
   local row = dlg.add{ type = "flow", direction = "horizontal" }
   row.add{ type = "button", name = "sp-rename-ok", caption = "OK", style = "confirm_button", tags = { action = "rename_ok" } }
   row.add{ type = "button", name = "sp-rename-cancel", caption = "Cancel", style = "button", tags = { action = "rename_cancel" } }
-
   tf.focus(); tf.select_all()
 end
 
@@ -273,76 +256,43 @@ local function open_delete_confirm(player, folder_id)
   local m = folder_model(player.index)
   local f = m.folders[folder_id]; if not f then return end
 
-  local dlg = player.gui.screen.add{
-    type = "frame", name = DELETE_MENU_NAME, direction = "vertical", tags = { folder_id = folder_id }
-  }
+  local dlg = player.gui.screen.add{ type = "frame", name = DELETE_MENU_NAME, direction = "vertical", tags = { folder_id = folder_id } }
   dlg.auto_center = true
-
-  dlg.add{
-    type = "label",
-    caption = string.format('Are you sure you want to delete "%s"?', f.name or ("Folder " .. folder_id)),
-    style = "subheader_caption_label"
-  }
+  dlg.add{ type = "label", caption = string.format('Are you sure you want to delete "%s"?', f.name or ("Folder " .. folder_id)), style = "subheader_caption_label" }
   local row = dlg.add{ type = "flow", direction = "horizontal" }
   row.add{ type = "button", name = "sp-delete-ok", caption = "Delete", style = "confirm_button", tags = { action = "delete_confirm_ok" } }
   row.add{ type = "button", name = "sp-delete-cancel", caption = "Cancel", style = "button", tags = { action = "delete_confirm_cancel" } }
 end
 
--- ---------- Resize handle ----------
+-- ---------- List / Rows ----------
 
-local function destroy_resizer(player)
-  local h = player.gui.screen[RESIZE_HANDLE_NAME]
-  if h and h.valid then h.destroy() end
-end
-
-local function position_resizer(player)
-  local frame  = player.gui.screen[UI_NAME]
-  local handle = player.gui.screen[RESIZE_HANDLE_NAME]
-  if not (frame and frame.valid and handle and handle.valid) then return end
-
-  local bx, by = get_frame_bottom_right(frame)
-  handle.location = { x = bx - RESIZE_HANDLE_SIZE, y = by - RESIZE_HANDLE_SIZE }
-end
-
-local function ensure_resizer(player)
-  local handle = player.gui.screen[RESIZE_HANDLE_NAME]
-  if handle and handle.valid then
-    position_resizer(player)
-    return handle
+local function get_row_button(row)
+  if not (row and row.valid and row.type == "flow") then return nil end
+  for _, c in ipairs(row.children) do
+    if c and c.valid and c.type == "button" and (c.tags and c.tags.platform_index) then return c end
   end
-
-  handle = player.gui.screen.add{
-    type = "frame",
-    name = RESIZE_HANDLE_NAME,
-    direction = "vertical",
-  }
-  handle.style.padding = 0
-  handle.style.minimal_width  = RESIZE_HANDLE_SIZE
-  handle.style.minimal_height = RESIZE_HANDLE_SIZE
-  handle.style.maximal_width  = RESIZE_HANDLE_SIZE
-  handle.style.maximal_height = RESIZE_HANDLE_SIZE
-
-  local drag = handle.add{ type = "empty-widget", style = "draggable_space" }
-  drag.style.width  = RESIZE_HANDLE_SIZE
-  drag.style.height = RESIZE_HANDLE_SIZE
-  drag.drag_target  = handle
-
-  position_resizer(player)
-  return handle
+  return nil
 end
 
-local function raise_resizer(player)
-  -- Recreate only on clicks (never during drag) to bring to top without interrupting.
-  local loc
-  local h = player.gui.screen[RESIZE_HANDLE_NAME]
-  if h and h.valid then loc = h.location end
-  destroy_resizer(player)
-  h = ensure_resizer(player)
-  if loc and h and h.valid then h.location = loc end
-  position_resizer(player)
+local function apply_platform_button_size(player)
+  local frame = player.gui.screen[UI_NAME]
+  if not (frame and frame.valid) then return end
+  local st = ui_state(player.index)
+  local scroll = frame["platform_scroll"]
+  local list = (scroll and scroll.valid) and scroll["platform_list"] or nil
+  if not (list and list.valid) then return end
+  for _, row in ipairs(list.children) do
+    if row and row.valid and row.tags and row.tags.kind == "row" then
+      local btn = get_row_button(row)
+      if btn and btn.valid then
+        btn.style.minimal_width  = st.button_w
+        btn.style.maximal_width  = st.button_w
+        btn.style.minimal_height = st.button_h
+        btn.style.maximal_height = st.button_h
+      end
+    end
+  end
 end
-
--- ---------- UI build ----------
 
 local function add_row(list_flow, style_name, caption, platform_id)
   local row = list_flow.add{ type = "flow", direction = "horizontal", tags = { kind = "row" } }
@@ -460,33 +410,50 @@ local function build_platform_list(player, frame)
   apply_ui_state(player)
 end
 
+-- ---------- Build UI ----------
+
 local function build_platform_ui(player)
-  destroy_move_menu(player)
-  destroy_rename_menu(player)
-  destroy_delete_menu(player)
+  destroy_move_menu(player); destroy_rename_menu(player); destroy_delete_menu(player)
 
   local frame = player.gui.screen.add{ type = "frame", name = UI_NAME, direction = "vertical" }
+  frame.style.padding = 12
 
   local st = ui_state(player.index)
   frame.auto_center = (st.loc == nil)
 
-  local header = frame.add{ type = "flow", direction = "vertical", name = "sp_header" }
-
-  local titlebar = header.add{ type = "flow", direction = "horizontal", name = "sp_titlebar" }
+  -- Title bar
+  local titlebar = frame.add{ type = "flow", direction = "horizontal", name = "sp_titlebar" }
   titlebar.add{ type = "label", caption = {"gui.space-platforms-org-ui-title"}, style = "frame_title" }
-  local drag = titlebar.add{ type = "empty-widget", name = "drag_handle", style = "draggable_space_header" }
-  drag.style.horizontally_stretchable = true; drag.style.height = 24; drag.drag_target = frame
+  local tdrag = titlebar.add{ type = "empty-widget", name = "drag_handle", style = "draggable_space_header" }
+  tdrag.style.horizontally_stretchable = true; tdrag.style.height = 24; tdrag.drag_target = frame
 
-  local controls = header.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
+  -- Controls row
+  local controls = frame.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
   controls.style.horizontal_spacing = 2
   controls.add{ type = "button", name = HEADER_ADD_FOLDER, caption = "+F", style = "tool_button", tooltip = {"", "Add folder"} }
 
+  -- Main list
   build_platform_list(player, frame)
 
+  -- Footer spacer + grip at bottom-right
+  local footer = frame.add{ type = "flow", name = "sp_footer", direction = "horizontal" }
+  footer.style.horizontally_stretchable = true
+  footer.style.vertically_stretchable   = false
+
+  local spacer = footer.add{ type = "empty-widget", name = "sp_footer_spacer" }
+  spacer.style.horizontally_stretchable = true
+  spacer.style.height = RESIZE_SIZE
+
+  local grip = footer.add{ type = "empty-widget", name = RESIZE_GRIP_NAME, style = "draggable_space" }
+  grip.style.width  = RESIZE_SIZE
+  grip.style.height = RESIZE_SIZE
+  -- Dragging the grip moves the invisible screen ghost; we resize from that.
+  local ghost = ensure_ghost(player)
+  grip.drag_target = ghost
+
+  -- Apply stored size/pos and park the ghost
   apply_ui_state(player)
-  ensure_resizer(player)
-  position_resizer(player)
-  raise_resizer(player)
+  ghost.location = desired_ghost_location(frame)
 end
 
 local function rebuild_ui(player)
@@ -497,11 +464,14 @@ local function rebuild_ui(player)
 end
 
 local function toggle_platform_ui(player, refresh)
-  local existing = player.gui.screen[UI_NAME]
-  if existing and existing.valid then
+  local frame = player.gui.screen[UI_NAME]
+  if frame and frame.valid then
     if refresh then rebuild_ui(player)
     else
-      capture_ui_state(player); existing.destroy(); destroy_resizer(player)
+      capture_ui_state(player)
+      frame.destroy()
+      local ghost = player.gui.screen[RESIZE_GHOST_NAME]
+      if ghost and ghost.valid then ghost.destroy() end
     end
   else
     build_platform_ui(player)
@@ -519,14 +489,10 @@ script.on_event(defines.events.on_gui_click, function(event)
   local player  = game.get_player(event.player_index)
   if not (element and element.valid and player) then return end
 
-  if element_has_ancestor_named(element, UI_NAME) then
-    raise_resizer(player)
-  end
-
   local name = element.name
   local tags = element.tags or {}
 
-  if name == HEADER_ADD_FOLDER then folder_model_add(player, nil); rebuild_ui(player); return end
+  if name == HEADER_ADD_FOLDER then add_folder(player, nil); rebuild_ui(player); return end
 
   if tags.action == "toggle_folder" and tags.folder_id then
     local m = folder_model(player.index)
@@ -535,10 +501,7 @@ script.on_event(defines.events.on_gui_click, function(event)
     rebuild_ui(player); return
   end
 
-  if tags.action == "open_delete_confirm" and tags.folder_id then
-    open_delete_confirm(player, tags.folder_id); return
-  end
-
+  if tags.action == "open_delete_confirm" and tags.folder_id then open_delete_confirm(player, tags.folder_id); return end
   if tags.action == "delete_confirm_ok" then
     local dlg = player.gui.screen[DELETE_MENU_NAME]
     if dlg and dlg.valid then
@@ -548,11 +511,9 @@ script.on_event(defines.events.on_gui_click, function(event)
     end
     return
   end
-
   if tags.action == "delete_confirm_cancel" then destroy_delete_menu(player); return end
 
   if tags.action == "open_move_menu" and tags.platform_id then open_move_menu(player, tags.platform_id); return end
-
   if tags.action == "move_to_folder" and tags.platform_id and tags.folder_id then
     local fid = (tags.folder_id == UNSORTED_ID) and nil or tags.folder_id
     assign_platform(player, tags.platform_id, fid)
@@ -560,7 +521,6 @@ script.on_event(defines.events.on_gui_click, function(event)
   end
 
   if tags.action == "open_rename_menu" and tags.folder_id then open_rename_menu(player, tags.folder_id); return end
-
   if tags.action == "rename_ok" then
     local dlg = player.gui.screen[RENAME_MENU_NAME]
     if dlg and dlg.valid then
@@ -577,9 +537,9 @@ script.on_event(defines.events.on_gui_click, function(event)
     end
     return
   end
-
   if tags.action == "rename_cancel" then destroy_rename_menu(player); return end
 
+  -- Platform selection (open platform view)
   if name:sub(1, #BUTTON_PREFIX) == BUTTON_PREFIX or (tags.platform_index) then
     local pid = tags.platform_index or tonumber(name:sub(#BUTTON_PREFIX + 1)); if not pid then return end
     local plat
@@ -598,6 +558,7 @@ script.on_event(defines.events.on_gui_click, function(event)
   end
 end)
 
+-- Enter in rename dialog
 script.on_event(defines.events.on_gui_confirmed, function(event)
   local element = event.element
   local player  = game.get_player(event.player_index)
@@ -613,34 +574,32 @@ script.on_event(defines.events.on_gui_confirmed, function(event)
   destroy_rename_menu(player); rebuild_ui(player)
 end)
 
+-- Location changes: frame moved or the resize ghost dragged
 script.on_event(defines.events.on_gui_location_changed, function(event)
-  local element = event.element
-  local player  = game.get_player(event.player_index)
-  if not (element and element.valid and player) then return end
+  local el = event.element
+  local player = game.get_player(event.player_index)
+  if not (el and el.valid and player) then return end
 
-  if element.name == UI_NAME then
+  if el.name == UI_NAME then
     local st = ui_state(player.index)
-    st.loc = { x = element.location.x, y = element.location.y }
-    position_resizer(player)
+    st.loc = { x = el.location.x, y = el.location.y }
+    position_ghost(player)
     return
   end
 
-  if element.name == RESIZE_HANDLE_NAME then
+  if el.name == RESIZE_GHOST_NAME then
     local frame = player.gui.screen[UI_NAME]
     if not (frame and frame.valid) then return end
 
     local fx, fy = (frame.location and frame.location.x) or 0, (frame.location and frame.location.y) or 0
-
-    -- Translate handle movement into new content size using the same chrome offsets
-    local bx, by = get_frame_bottom_right(frame)
-    -- Current bottom-right comes from content size we set previously; recompute against new handle location.
-    local hl = element.location or {x = bx, y = by}
     local s  = frame.style
     local px = num(s.left_padding) + num(s.right_padding)
     local py = num(s.top_padding)  + num(s.bottom_padding)
 
-    local new_w = math.min(MAX_W, math.max(MIN_W, (hl.x - fx) - px + RESIZE_HANDLE_SIZE))
-    local new_h = math.min(MAX_H, math.max(MIN_H, (hl.y - fy) - py + RESIZE_HANDLE_SIZE))
+    -- Compute new content size from ghost's screen position
+    local hl = el.location or {x = fx, y = fy}
+    local new_w = math.min(MAX_W, math.max(MIN_W, (hl.x - fx) - px + RESIZE_SIZE))
+    local new_h = math.min(MAX_H, math.max(MIN_H, (hl.y - fy) - py + RESIZE_SIZE))
 
     local st = ui_state(player.index)
     st.w, st.h = new_w, new_h
@@ -650,31 +609,34 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
     frame.style.minimal_height = new_h
     frame.style.maximal_height = new_h
 
-    position_resizer(player)
+    -- Snap ghost back to the new bottom-right so dragging continues smoothly
+    el.location = desired_ghost_location(frame)
     return
   end
 end)
 
+-- Close windows
 script.on_event(defines.events.on_gui_closed, function(event)
-  local element = event.element
-  local player  = game.get_player(event.player_index)
+  local el = event.element
+  local player = game.get_player(event.player_index)
   if not player then return end
-  if element and element.name == UI_NAME then
+  if el and el.name == UI_NAME then
     capture_ui_state(player)
-    element.destroy()
+    el.destroy()
     destroy_move_menu(player)
     destroy_rename_menu(player)
     destroy_delete_menu(player)
-    destroy_resizer(player)
-  elseif element and (element.name == MOVE_MENU_NAME or element.name == RENAME_MENU_NAME or element.name == DELETE_MENU_NAME) then
-    element.destroy()
+    local ghost = player.gui.screen[RESIZE_GHOST_NAME]
+    if ghost and ghost.valid then ghost.destroy() end
+  elseif el and (el.name == MOVE_MENU_NAME or el.name == RENAME_MENU_NAME or el.name == DELETE_MENU_NAME) then
+    el.destroy()
   end
 end)
 
 -- ---------- Lifecycle ----------
 
-script.on_init(function() local g=get_global(); g.spui=g.spui or {}; g.spfolders=g.spfolders or {} end)
-script.on_configuration_changed(function() local g=get_global(); g.spui=g.spui or {}; g.spfolders=g.spfolders or {} end)
+script.on_init(function() gstate() end)
+script.on_configuration_changed(function() gstate() end)
 
 local function rebuild_all_open()
   for _, p in pairs(game.connected_players) do
@@ -686,6 +648,7 @@ end
 if defines.events.on_platform_created then script.on_event(defines.events.on_platform_created, rebuild_all_open) end
 if defines.events.on_platform_removed then script.on_event(defines.events.on_platform_removed, rebuild_all_open) end
 script.on_event(defines.events.on_surface_created, function(e)
-  local s = game.surfaces[e.surface_index]; if s and s.valid and s.name and s.name:find("^platform%-") then rebuild_all_open() end
+  local s = game.surfaces[e.surface_index]
+  if s and s.valid and s.name and s.name:find("^platform%-") then rebuild_all_open() end
 end)
 script.on_event(defines.events.on_surface_deleted, function() rebuild_all_open() end)
