@@ -26,16 +26,20 @@ local RESIZE_SIZE       = 16
 -- Window size limits
 local MIN_W, MIN_H, MAX_W, MAX_H = 360, 320, 1400, 1400
 
--- ---------- State ----------
+-- ---------- Safe global ----------
 
-local function gstate()
+local function ensure_global_tables()
+  if type(global) ~= "table" then
+    -- In very early phases (or some menu paths) Factorio may not have created `global` yet.
+    -- Create it so our on_configuration_changed handler is safe.
+    rawset(_G, "global", {})
+  end
   global.spui      = global.spui or {}       -- per-player ui state
   global.spfolders = global.spfolders or {}  -- per-player folder model
-  return global
 end
 
 local function ui_state(pi)
-  gstate()
+  ensure_global_tables()
   local st = global.spui[pi]
   if not st then
     st = { w = 440, h = 528, loc = nil, scroll = 0, button_w = 260, button_h = 24 }
@@ -45,7 +49,7 @@ local function ui_state(pi)
 end
 
 local function folder_model(pi)
-  gstate()
+  ensure_global_tables()
   local m = global.spfolders[pi]
   if not m then
     m = { next_id = 1, folders = {}, order = {}, platform_folder = {} }
@@ -132,7 +136,6 @@ local function ensure_ghost(player)
   ghost = player.gui.screen.add{ type = "empty-widget", name = RESIZE_GHOST_NAME }
   ghost.style.width  = RESIZE_SIZE
   ghost.style.height = RESIZE_SIZE
-  -- No graphics; it's effectively invisible
   return ghost
 end
 
@@ -466,7 +469,8 @@ end
 local function toggle_platform_ui(player, refresh)
   local frame = player.gui.screen[UI_NAME]
   if frame and frame.valid then
-    if refresh then rebuild_ui(player)
+    if refresh then
+      rebuild_ui(player)
     else
       capture_ui_state(player)
       frame.destroy()
@@ -635,8 +639,14 @@ end)
 
 -- ---------- Lifecycle ----------
 
-script.on_init(function() gstate() end)
-script.on_configuration_changed(function() gstate() end)
+script.on_init(function()
+  ensure_global_tables()
+end)
+
+script.on_configuration_changed(function()
+  -- Keep this extremely safe; do not assume `global` exists.
+  ensure_global_tables()
+end)
 
 local function rebuild_all_open()
   for _, p in pairs(game.connected_players) do
