@@ -1,6 +1,6 @@
 -- control.lua
 -- Space Platform Organizer UI
--- Full file with fixed-size window, bottom-right resize handle, folders, and debug markers.
+-- Fixed-size frame + bottom-right resize handle + folders + always-on debug markers
 
 -- ========= Constants =========
 local UI_NAME               = "space-platform-org-ui"
@@ -27,8 +27,8 @@ local RESIZE_SIZE           = 16
 -- Window size limits
 local MIN_W, MIN_H, MAX_W, MAX_H = 360, 320, 1400, 1400
 
--- Debug markers (toggle via /spui_debug)
-local DEBUG                 = false
+-- Always-on debug overlay
+local DEBUG                 = true
 
 -- ========= Global state =========
 local function ensure_global_tables()
@@ -42,11 +42,11 @@ local function ui_state(pi)
   local st = global.spui[pi]
   if not st then
     st = {
-      w = 440, h = 528,
+      w = 720, h = 480,          -- start with something clearly not full-screen
       loc = nil,
       scroll = 0,
       button_w = 260, button_h = 24,
-      follow = false,          -- keep handle glued each tick while UI open
+      follow = false,
     }
     global.spui[pi] = st
   end
@@ -66,6 +66,7 @@ end
 -- ========= Helpers =========
 local function num(x) return tonumber(x) or 0 end
 
+-- Lock a frame to an exact size and prevent stretching
 local function fix_frame_size(frame, w, h)
   frame.style.horizontally_stretchable = false
   frame.style.vertically_stretchable   = false
@@ -95,26 +96,55 @@ local function capture_ui_state(player)
   return st
 end
 
+local function sync_children_widths(frame, w)
+  -- The scroll pane and its list must not be allowed to widen the frame.
+  local scroll = frame["platform_scroll"]
+  if scroll and scroll.valid then
+    scroll.style.horizontally_stretchable = false
+    scroll.style.minimal_width = w
+    scroll.style.maximal_width = w
+    local list = scroll["platform_list"]
+    if list and list.valid then
+      list.style.horizontally_stretchable = false
+      list.style.minimal_width = w
+      list.style.maximal_width = w
+    end
+  end
+end
+
 local function apply_ui_state(player)
   local st = ui_state(player.index)
   local frame = player.gui.screen[UI_NAME]
   if not (frame and frame.valid) then return end
 
-  -- Hard lock exact size; prevents stretching by children/layout.
+  -- Hard lock size
   fix_frame_size(frame, st.w, st.h)
+  sync_children_widths(frame, st.w)
 
+  -- Position
   if st.loc and st.loc.x and st.loc.y then
     frame.location = { x = st.loc.x, y = st.loc.y }
   else
     frame.auto_center = true
   end
 
+  -- Scroll
   local scroll = frame["platform_scroll"]
   if scroll and scroll.valid then
     local sb = scroll.vertical_scrollbar
     if sb and sb.valid and st.scroll then
       local maxv = sb.maximum_value or sb.max_value or sb.value
       sb.value = math.min(maxv, math.max(0, st.scroll))
+    end
+  end
+
+  -- Update debug info label (if present)
+  local tb = frame["sp_titlebar"]
+  if tb and tb.valid then
+    local info = tb["sp_dbg_info"]
+    if info and info.valid then
+      local loc = frame.location or {x=0,y=0}
+      info.caption = string.format("  w=%d h=%d  @ %d,%d", st.w, st.h, loc.x or 0, loc.y or 0)
     end
   end
 end
@@ -133,7 +163,7 @@ local function ensure_resizer(player)
   local h = player.gui.screen[RESIZE_HANDLE_NAME]
   if h and h.valid then return h end
 
-  -- A small top-level frame with a draggable_space child that drags its PARENT (valid).
+  -- A small top-level frame with a draggable_space child that drags its PARENT
   h = player.gui.screen.add{ type = "frame", name = RESIZE_HANDLE_NAME, direction = "vertical" }
   h.style.padding = 0
   h.style.margin  = 0
@@ -164,16 +194,19 @@ local function position_resizer(player)
 end
 
 -- ========= Debug markers =========
-local function ensure_dbg_marker(player, name)
+local function ensure_dbg_box(player, name, label)
   local el = player.gui.screen[name]
   if el and el.valid then return el end
-  el = player.gui.screen.add{ type="frame", name=name }
+  el = player.gui.screen.add{ type="frame", name=name, direction="horizontal" }
   el.style.padding = 0
   el.style.margin  = 0
-  el.style.minimal_width  = 12
-  el.style.minimal_height = 12
-  el.style.maximal_width  = 12
-  el.style.maximal_height = 12
+  el.style.minimal_width  = 24
+  el.style.minimal_height = 24
+  el.style.maximal_width  = 24
+  el.style.maximal_height = 24
+  local lab = el.add{ type="label", caption=label }
+  lab.style.font = "default-bold"
+  lab.style.left_padding = 4
   return el
 end
 
@@ -185,23 +218,18 @@ local function update_debug_markers(player)
     return
   end
   local frame = player.gui.screen[UI_NAME]
-  if not (frame and frame.valid) then return end
-  local tl = ensure_dbg_marker(player, "spui-dbg-tl")
-  tl.style.font_color = {0,1,0}
+  if not (frame and frame.valid) then
+    for _, n in pairs({"spui-dbg-tl","spui-dbg-br"}) do
+      local e = player.gui.screen[n]; if e and e.valid then e.destroy() end
+    end
+    return
+  end
+  local tl = ensure_dbg_box(player, "spui-dbg-tl", "TL")
   tl.location = frame.location or {x=0,y=0}
 
-  local br = ensure_dbg_marker(player, "spui-dbg-br")
-  br.style.font_color = {1,0,0}
+  local br = ensure_dbg_box(player, "spui-dbg-br", "BR")
   local loc = handle_location_for(player)
   br.location = { x = loc.x, y = loc.y }
-end
-
-if commands and commands.add_command then
-  commands.add_command("spui_debug", "Toggle Space Platform UI debug markers", function(cmd)
-    DEBUG = not DEBUG
-    local p = game.get_player(cmd.player_index)
-    if p then p.print("SPUI debug: " .. (DEBUG and "ON" or "OFF")) end
-  end)
 end
 
 -- ========= Folder model =========
@@ -251,10 +279,6 @@ local function folder_child_count(m, folder_id, entries)
 end
 
 -- ========= Popups =========
-local MOVE_MENU_NAME  = MOVE_MENU_NAME
-local RENAME_MENU_NAME = RENAME_MENU_NAME
-local DELETE_MENU_NAME = DELETE_MENU_NAME
-
 local function destroy_move_menu(player)
   local menu = player.gui.screen[MOVE_MENU_NAME]
   if menu and menu.valid then menu.destroy() end
@@ -396,11 +420,11 @@ local function build_platform_list(player, frame)
 
   local scroll = frame.add{ type = "scroll-pane", name = "platform_scroll" }
   scroll.style.vertically_stretchable   = true
-  scroll.style.horizontally_stretchable = true
+  scroll.style.horizontally_stretchable = false  -- IMPORTANT: children won't force frame to widen
 
   local list = scroll.add{ type = "flow", name = "platform_list", direction = "vertical" }
   list.style.vertically_stretchable   = true
-  list.style.horizontally_stretchable = true
+  list.style.horizontally_stretchable = false
 
   for _, fid in ipairs(m.order) do
     local f = m.folders[fid]
@@ -421,7 +445,7 @@ local function build_platform_list(player, frame)
       local head = bar.add{
         type = "button",
         caption = string.format("  %s (%d)", (f.name or ("Folder " .. fid)), count),
-        style = "sp_list_button_tan", -- tan style (defined in data.lua)
+        style = "sp_list_button_tan",
         tooltip = {"", "Folder: ", f.name}
       }
       head.style.horizontally_stretchable = true
@@ -483,11 +507,14 @@ local function build_platform_ui(player)
   -- Title bar (fixed height)
   local titlebar = frame.add{ type = "flow", direction = "horizontal", name = "sp_titlebar" }
   titlebar.style.height = 28
-  titlebar.add{ type = "label", caption = "Space Platforms", style = "frame_title" }
+  local title = titlebar.add{ type = "label", caption = "Space Platforms", style = "frame_title" }
+  title.style.left_padding = 6
   local tdrag = titlebar.add{ type = "empty-widget", name = "drag_handle", style = "draggable_space_header" }
   tdrag.style.horizontally_stretchable = true
   tdrag.style.height = 28
   tdrag.drag_target = frame
+  -- Debug info label
+  titlebar.add{ type="label", name="sp_dbg_info", caption="  w=?,h=? @ ?,?", style="label" }
 
   -- Controls row (fixed height)
   local controls = frame.add{ type = "flow", direction = "horizontal", name = "sp_controls" }
@@ -495,7 +522,7 @@ local function build_platform_ui(player)
   controls.style.height = 28
   controls.add{ type = "button", name = HEADER_ADD_FOLDER, caption = "+F", style = "tool_button", tooltip = {"", "Add folder"} }
 
-  -- Main list (stretches inside fixed frame)
+  -- Main list (stretches vertically, fixed horizontally)
   build_platform_list(player, frame)
 
   -- Footer to reserve space equal to handle size (visual padding at bottom)
@@ -514,6 +541,9 @@ local function build_platform_ui(player)
 
   -- Keep handle glued each tick
   ui_state(player.index).follow = true
+
+  -- Draw debug markers now
+  update_debug_markers(player)
 end
 
 local function rebuild_ui(player)
@@ -647,6 +677,7 @@ script.on_event(defines.events.on_gui_location_changed, function(event)
     st.w, st.h = new_w, new_h
 
     fix_frame_size(frame, new_w, new_h)
+    sync_children_widths(frame, new_w)
 
     position_resizer(player)
     update_debug_markers(player)
