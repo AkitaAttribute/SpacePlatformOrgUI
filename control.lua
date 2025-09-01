@@ -1,7 +1,8 @@
 -- control.lua
 -- Space Platform Organizer UI
 -- Persistence via `storage` (Factorio 2.0+), per-force(by name)
--- Fix: reliable unassign to Unsorted (type-safe), plus sanitizer.
+-- Fix: reliable unassign to Unsorted (handles string/number key/value mismatches)
+--      plus a name-based fallback for the Unsorted button.
 
 -- ========= Constants =========
 local UI_NAME               = "space-platform-org-ui"
@@ -50,20 +51,34 @@ local function ui_state(player_index)
   return st
 end
 
--- Sanitize model: coerce folder ids to numbers; drop UNSORTED and bad values
+-- Normalize platform_folder map:
+-- - Convert numeric-string KEYS to numbers
+-- - Convert numeric-string VALUES to numbers
+-- - Drop UNSORTED_ID (-1) and invalid values to nil
 local function sanitize_folder_model(m)
   if not (m and m.platform_folder) then return end
-  for pid, fid in pairs(m.platform_folder) do
-    local nfid = tonumber(fid)
-    if nfid == nil then
-      -- Unknown non-numeric tag; clear it
-      m.platform_folder[pid] = nil
-    elseif nfid == UNSORTED_ID then
-      -- Our "unsorted" sentinel must be nil in the map
-      m.platform_folder[pid] = nil
-    else
-      -- Normalize to numeric id
-      m.platform_folder[pid] = nfid
+  local pf = m.platform_folder
+  local moves = {}
+  for k, v in pairs(pf) do
+    local nk = k
+    if type(k) == "string" then
+      local tk = tonumber(k)
+      if tk then nk = tk end
+    end
+    local nv = v
+    if type(v) == "string" then
+      local tv = tonumber(v)
+      if tv then nv = tv end
+    end
+    if nv == UNSORTED_ID then nv = nil end
+    if nk ~= k or nv ~= v then
+      table.insert(moves, { oldk = k, newk = nk, val = nv })
+    end
+  end
+  for _, mv in ipairs(moves) do
+    pf[mv.oldk] = nil
+    if mv.newk ~= nil and mv.val ~= nil then
+      pf[mv.newk] = mv.val
     end
   end
 end
@@ -241,7 +256,15 @@ end
 local function assign_platform(player, platform_id, folder_id)
   local m = folder_model_for_player(player)
   if folder_id and not m.folders[folder_id] then return end
-  m.platform_folder[platform_id] = folder_id  -- nil removes the key (unsorted)
+  if folder_id == nil then
+    -- Robustly remove both numeric and string keys for this platform id
+    m.platform_folder[platform_id] = nil
+    m.platform_folder[tostring(platform_id)] = nil
+  else
+    m.platform_folder[platform_id] = folder_id
+    -- Also clean up any stray string key variant
+    m.platform_folder[tostring(platform_id)] = nil
+  end
 end
 
 local function folder_child_count(m, folder_id, entries)
@@ -273,7 +296,6 @@ local function open_move_menu(player, platform_id)
     type = "button",
     name = "sp-move-target-none-" .. platform_id,
     caption = "(Unsorted)", style  = "button",
-    -- IMPORTANT: keep folder_id numeric UNSORTED_ID; handler will coerce/interpret
     tags   = { action = "move_to_folder", folder_id = UNSORTED_ID, platform_id = platform_id }
   }
 end
@@ -484,12 +506,23 @@ script.on_event(defines.events.on_gui_click, function(event)
   if not (element and element.valid and player) then return end
   local name, tags = element.name, (element.tags or {})
 
+  -- Name-based fallback: "(Unsorted)" target button (works even if tags are malformed)
+  local pid_from_name = name:match("^sp%-move%-target%-none%-(%d+)$")
+  if pid_from_name then
+    local pid = tonumber(pid_from_name)
+    if pid then
+      assign_platform(player, pid, nil)
+      destroy_move_menu(player); rebuild_ui(player)
+    end
+    return
+  end
+
   if name == CLOSE_BTN_NAME or tags.action == "close_window" then toggle_platform_ui(player); return end
   if name == HEADER_ADD_FOLDER then add_folder(player, nil); rebuild_ui(player); return end
 
   if tags.action == "toggle_folder" and tags.folder_id ~= nil then
     local m = folder_model_for_player(player)
-    local fid = tonumber(tags.folder_id)  -- ensure numeric
+    local fid = tonumber(tags.folder_id)
     if fid and m.folders[fid] then
       m.folders[fid].expanded = not m.folders[fid].expanded
       rebuild_ui(player)
@@ -519,7 +552,6 @@ script.on_event(defines.events.on_gui_click, function(event)
   end
 
   if tags.action == "move_to_folder" and tags.platform_id ~= nil and tags.folder_id ~= nil then
-    -- TYPE-SAFE: coerce both ids
     local pid = tonumber(tags.platform_id)
     local raw_fid = tonumber(tags.folder_id)
     if pid then
@@ -603,7 +635,6 @@ end)
 -- ========= Lifecycle & tick glue =========
 script.on_init(function()
   ensure_storage_tables()
-  -- One-time sanitation in existing saves
   for _, m in pairs(storage.spfolders_by_force_name or {}) do
     sanitize_folder_model(m)
   end
@@ -611,7 +642,6 @@ end)
 
 script.on_configuration_changed(function()
   ensure_storage_tables()
-  -- Sanitize on config change as well (covers migrations)
   for _, m in pairs(storage.spfolders_by_force_name or {}) do
     sanitize_folder_model(m)
   end
